@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+  <link rel="icon" type="image/png" href="logo-jcosasi.png" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>JCOSASI — Editor Laporan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <!-- Font hero landing page untuk loading screen -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Noto+Serif+JP:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style_input.css"/>
+</head>
+<body>
+
+<div class="lov" id="lov">
+  <!-- Layer 1: hero-bg gradients -->
+  <div class="lov-bg"></div>
+  <!-- Layer 2: grid overlay garis tipis -->
+  <div class="lov-grid"></div>
+  <!-- Layer 3: sakura static dots -->
+  <div class="lov-sakura-static"></div>
+  <!-- Layer 4: animated sakura petals -->
+  <div class="lov-sakura" id="lovSakura"></div>
+  <!-- Layer 5: circle decos -->
+  <div class="lov-circle-1"></div>
+  <div class="lov-circle-2"></div>
+  <!-- Konten -->
+  <div class="lov-content">
+    <div class="lov-logo">
+      <img src="logo-jcosasi.png" alt="JCOSASI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
+      <span class="lov-logo-fallback" style="display:none">🎌</span>
+    </div>
+    <div style="text-align:center">
+      <div class="lov-title">JCOSASI</div>
+      <div class="lov-subtitle">Editor Laporan</div>
+    </div>
+    <div class="lov-bar-wrap"><div class="lov-bar"></div></div>
+    <div class="ltx" id="ltx">Memuat data…</div>
+
+    <!-- Token Input Card — glassmorphism -->
+    <div class="lov-token-card" id="lovTokenCard">
+      <div class="lov-token-icon">🔑</div>
+      <div class="lov-token-label">Write Token</div>
+      <div class="lov-token-hint">Masukkan token akses untuk melanjutkan</div>
+      <div class="lov-token-row">
+        <input
+          type="password"
+          id="lovTokenInput"
+          class="lov-token-input"
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="lov-token-eye" id="lovTokenEye" type="button" onclick="toggleTokenVisibility()" title="Tampilkan/sembunyikan token">👁</button>
+      </div>
+      <button class="lov-token-btn" id="lovTokenBtn" type="button" onclick="submitToken()">
+        <span>Konfirmasi</span>
+        <span class="lov-token-arr">→</span>
+      </button>
+      <div class="lov-token-status" id="lovTokenStatus"></div>
+    </div>
+  </div>
+</div>
+
+<nav class="topbar">
+  <button class="tb-ham" id="btnHam" onclick="toggleSidebar()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="tb-logo"><div class="tb-li"><img src="logo-jcosasi.png" alt="J" onerror="this.style.display='none';this.parentElement.innerHTML='🎌'"/></div><div><div class="tb-lt">JCOSASI</div><div class="tb-ls">Editor Laporan v3</div></div></div>
+  <div class="tb-sp"></div>
+  <div class="tb-st"><div class="tb-d" id="statusDot"></div><span id="statusTxt">Memuat…</span></div>
+  <button class="btn-upload" id="btnUpload" onclick="handleUpload()" disabled>☁️ Upload</button>
+</nav>
+
+<div class="app">
+  <div class="sb-overlay" id="sbOverlay" onclick="closeSidebar()"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-close-row"><button class="sb-close-btn" onclick="closeSidebar()">✕ Tutup</button></div>
+    <div class="sb-s">Dashboard</div>
+    <div class="sb-i active" onclick="showPage('rekap');closeSidebar()" id="nav-rekap"><span class="sb-ic">📊</span><span>Overview</span></div>
+    <div class="sb-i" onclick="showPage('changelog');closeSidebar()" id="nav-changelog"><span class="sb-ic">📝</span><span>Log Perubahan</span><span class="sb-b" id="badge-changelog">0</span></div>
+    <div class="sb-d"></div>
+    <div class="sb-s">Edit Data</div>
+    <div class="sb-i" onclick="showPage('dokumentasi');closeSidebar()" id="nav-dokumentasi"><span class="sb-ic">📋</span><span>Dokumentasi Sesi</span><span class="sb-b" id="badge-dokumentasi">0</span></div>
+    <div class="sb-i" onclick="showPage('jadwal');closeSidebar()" id="nav-jadwal"><span class="sb-ic">📅</span><span>Jadwal Proker</span><span class="sb-b" id="badge-jadwal">0</span></div>
+    <div class="sb-i" onclick="showPage('detail');closeSidebar()" id="nav-detail"><span class="sb-ic">📌</span><span>Detail Proker</span><span class="sb-b" id="badge-detail">0</span></div>
+    <div class="sb-i" onclick="showPage('notif');closeSidebar()" id="nav-notif"><span class="sb-ic">🔔</span><span>Notif Config</span><span class="sb-b" id="badge-notif">0</span></div>
+    <div class="sb-i" onclick="showPage('anggota');closeSidebar()" id="nav-anggota"><span class="sb-ic">👥</span><span>Anggota</span><span class="sb-b" id="badge-anggota">0</span></div>
+    <div class="sb-i" onclick="showPage('pengurus');closeSidebar()" id="nav-pengurus"><span class="sb-ic">🎌</span><span>Pengurus</span><span class="sb-b" id="badge-pengurus">0</span></div>
+    <div class="sb-d"></div>
+    <div class="sb-s">Publik</div>
+    <div class="sb-i" onclick="showPage('pengumuman');closeSidebar()" id="nav-pengumuman"><span class="sb-ic">📣</span><span>Pengumuman</span><span class="sb-b" id="badge-pengumuman">0</span></div>
+    <div class="sb-i" onclick="showPage('pencapaian');closeSidebar()" id="nav-pencapaian"><span class="sb-ic">🏆</span><span>Pencapaian</span><span class="sb-b" id="badge-pencapaian">0</span></div>
+  </aside>
+
+  <main class="main">
+
+    <!-- OVERVIEW -->
+    <div class="ps active" id="page-rekap">
+      <div class="ph">
+        <div class="ph-bg">📊 Dashboard Laporan JCOSASI</div>
+        <div class="ph-t">Editor Laporan <em>2026–2027</em></div>
+        <div class="ph-jp">レポート編集システム — Data Manager</div>
+        <div class="ph-stats">
+          <div class="ph-st"><span class="ph-sn" id="st-sesi">–</span><span class="ph-sl">Total Sesi</span></div>
+          <div class="ph-st"><span class="ph-sn" id="st-biaya">–</span><span class="ph-sl">Biaya Aktual</span></div>
+          <div class="ph-st"><span class="ph-sn" id="st-anggota">–</span><span class="ph-sl">Anggota</span></div>
+          <div class="ph-st"><span class="ph-sn" id="st-jadwal">–</span><span class="ph-sl">Jadwal</span></div>
+          <div class="ph-st alert"><span class="ph-sn" id="st-pending">0</span><span class="ph-sl">Pending ⚠️</span></div>
+          <div class="ph-st"><span class="ph-sn" id="st-changes">0</span><span class="ph-sl">Belum Upload</span></div>
+        </div>
+      </div>
+
+      <div class="panel" id="pendingPanel" style="display:none">
+        <div class="ph2"><span class="ph2-i">⚠️</span><span class="ph2-t">Jadwal Lewat Tanpa Dokumentasi</span><span class="ph2-s">Perlu diisi segera</span></div>
+        <div class="pb"><div id="pendingList"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="ph2"><span class="ph2-i">📅</span><span class="ph2-t">Activity Log — Semua Proker</span><span class="ph2-s">活動記録</span></div>
+        <div class="pb">
+          <div class="act-leg" id="actLeg"></div>
+          <div class="act-scroll"><div id="actMonths" class="act-months"></div><div id="actGraph" class="act-graph"></div></div>
+          <div class="act-stats" id="actStats"></div>
+        </div>
+      </div>
+
+      <div style="border:1.5px solid var(--gl);border-radius:var(--rs);background:#fff;overflow:hidden;margin-bottom:18px">
+        <div class="ph2"><span class="ph2-i">📂</span><span class="ph2-t">Per Program Kerja</span></div>
+        <div style="padding:13px"><div class="rk-grid" id="rkCards"></div></div>
+      </div>
+    </div>
+
+    <!-- DOKUMENTASI -->
+    <div class="ps" id="page-dokumentasi">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">📋 Dokumentasi Sesi</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-lap" onclick="openLaporanModal()" title="Cetak Laporan PDF / Excel / CSV">🖨️ Cetak Laporan</button>
+        <button class="btn-add" onclick="openNewSesiModal()">+ Tambah Sesi</button>
+      </div>
+      <div class="fchips" id="filterChips"></div>
+      <div class="pb-banner" id="dokBanner">✏️ <strong id="dokBannerN">0</strong> perubahan belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div class="sesi-list" id="sesiList"><div class="empty"><div class="ei">📂</div><div class="et">Memuat…</div></div></div>
+    </div>
+
+    <!-- JADWAL -->
+    <div class="ps" id="page-jadwal">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">📅 Jadwal Proker</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-lap" onclick="printSemuaJadwal()" title="Cetak laporan semua jadwal proker">🖨️ Cetak Laporan</button>
+        <button class="btn-add" onclick="openNewJadwalModal()">+ Tambah Jadwal</button>
+      </div>
+      <div class="pb-banner" id="jadwalBanner">✏️ <strong id="jadwalBannerN">0</strong> perubahan jadwal belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div id="jadwalContent"></div>
+    </div>
+
+    <!-- DETAIL PROKER -->
+    <div class="ps" id="page-detail">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">📌 Detail Program Kerja</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-lap" onclick="printSemuaDetail()" title="Cetak laporan semua detail proker">🖨️ Cetak Laporan</button>
+      </div>
+      <div class="pb-banner" id="detailBanner">✏️ <strong id="detailBannerN">0</strong> perubahan detail belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div id="detailContent"></div>
+    </div>
+
+    <!-- NOTIF CONFIG -->
+    <div class="ps" id="page-notif">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">🔔 Notifikasi Config</strong>
+      </div>
+      <div class="pb-banner" id="notifBanner">✏️ <strong id="notifBannerN">0</strong> perubahan notif belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div class="panel"><div class="pb" style="padding:0;overflow:auto">
+        <table class="ntbl" id="notifTable">
+          <thead><tr><th>#</th><th>Countdown</th><th>Ajakan</th><th>Teks Ajakan</th><th>Sub Teks</th><th>Wajib</th><th>Label Wajib</th><th>Sanksi</th></tr></thead>
+          <tbody id="notifTbody"></tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <!-- ANGGOTA -->
+    <div class="ps" id="page-anggota">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">👥 Data Anggota</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-add" onclick="addAnggotaRow()">+ Tambah Anggota</button>
+        <button class="btn-ar" style="margin-left:4px" title="Paste dari Excel/Sheets: Nama | Kelas | Angkatan | Status | No HP | Catatan" onclick="openPasteAnggota()">📋 Paste Tabel</button>
+        <button class="btn-lap" onclick="printLaporanAnggota()" title="Cetak laporan kehadiran semua anggota">🖨️ Cetak Laporan</button>
+      </div>
+      <div class="pb-banner" id="anggotaBanner">✏️ <strong id="anggotaBannerN">0</strong> perubahan anggota belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div class="panel"><div class="pb" style="padding:0"><div class="tbl-wrap">
+        <table class="ang-tbl" onpaste="pasteAnggota(event)">
+          <thead><tr><th>Nama</th><th>Kelas</th><th>Angkatan</th><th>Status</th><th>No HP</th><th>Catatan</th><th></th></tr></thead>
+          <tbody id="anggotaTbody"></tbody>
+        </table>
+      </div></div></div>
+    </div>
+
+    <!-- PENGURUS (dapat diedit) -->
+    <div class="ps" id="page-pengurus">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">🎌 Data Pengurus</strong>
+        <span style="font-size:.75rem;color:var(--gm)">(Klik kartu untuk edit)</span>
+      </div>
+      <div class="pb-banner" id="pengurusBanner">✏️ <strong id="pengurusBannerN">0</strong> perubahan pengurus belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div class="peng-grid" id="pengurusGrid">
+        <div class="empty"><div class="ei">👤</div><div class="et">Memuat…</div></div>
+      </div>
+    </div>
+
+    <!-- CHANGELOG -->
+    <div class="ps" id="page-changelog">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">📝 Log Perubahan</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-cancel" style="font-size:.78rem" onclick="if(confirm('Bersihkan log?')){S.changes=[];renderChangelog();updateBadges()}">Bersihkan</button>
+      </div>
+      <div id="changelogContent">
+        <div class="empty"><div class="ei">✅</div><div class="et">Tidak ada perubahan</div><div class="ed">Semua tersinkron</div></div>
+      </div>
+    </div>
+
+    <!-- PENCAPAIAN -->
+    <div class="ps" id="page-pencapaian">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">🏆 Pencapaian Anggota</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-add" onclick="openCapModal()">+ Tambah</button>
+      </div>
+      <div class="pb-banner" id="capBanner">✏️ <strong id="capBannerN">0</strong> perubahan belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div id="capContent"></div>
+    </div>
+
+    <!-- PENGUMUMAN -->
+    <div class="ps" id="page-pengumuman">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">📣 Pengumuman</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-add" onclick="openNewPgmModal()">+ Tambah</button>
+      </div>
+      <div class="pb-banner" id="pgmBanner">✏️ <strong id="pgmBannerN">0</strong> perubahan belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div id="pgmContent"></div>
+    </div>
+
+    <!-- PENGUMUMAN -->
+    <div class="ps" id="page-pengumuman">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">📣 Pengumuman</strong>
+        <div class="tb-sp"></div>
+        <button class="btn-add" onclick="openNewPgmModal()">+ Tambah</button>
+      </div>
+      <div class="pb-banner" id="pgmBanner">✏️ <strong id="pgmBannerN">0</strong> perubahan belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div id="pgmContent"></div>
+    </div>
+
+  </main>
+</div>
+
+<div class="act-tooltip" id="actTip"></div>
+<div class="tw" id="tw"></div>
+
+<!-- ══════════════ MODALS ══════════════ -->
+
+<!-- MODAL SESI -->
+<div class="mov" id="sesiModal">
+  <div class="modal">
+    <div class="m-h"><span>📋</span><span class="m-t" id="sesiMT">Edit Sesi</span><button class="m-x" onclick="closeModal('sesiModal')">✕</button></div>
+    <input type="hidden" id="e_idx"/>
+    <div class="g2">
+      <div class="fg"><div class="fl">Program Kerja</div><select class="fsel" id="e_pid"></select></div>
+      <div class="fg"><div class="fl">Tanggal</div><input type="date" class="fi" id="e_tgl"/></div>
+    </div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Waktu Mulai</div><input type="time" class="fi" id="e_mul"/></div>
+      <div class="fg"><div class="fl">Waktu Selesai</div><input type="time" class="fi" id="e_sel"/></div>
+    </div>
+    <div class="fg"><div class="fl">Keterangan / Judul Sesi</div><input type="text" class="fi" id="e_ket" placeholder="Judul sesi…"/></div>
+    <div class="fg"><div class="fl">Materi</div><textarea class="fta" id="e_mat" placeholder="Ringkasan materi…"></textarea></div>
+    <!-- PESERTA HADIR -->
+    <div class="fg">
+      <div class="fl">Peserta Hadir</div>
+      <div class="htags" id="tg-peserta"></div>
+      <div class="pck-wrap">
+        <div class="pck-search"><span class="pck-search-ic">🔍</span><input type="text" placeholder="Cari nama…" oninput="pckSearch('peserta',this.value)"/></div>
+        <div class="pck-classes" id="pck-cls-peserta"></div>
+        <div class="pck-footer">
+          <div class="pck-manual-row">
+            <input type="text" id="pck-manual-inp-peserta" placeholder="Nama (pisah koma, atau Nama|Kelas)…" onkeydown="if(event.key==='Enter'){addManualPck('peserta');event.preventDefault()}"/>
+            <input type="text" id="pck-manual-cls-peserta" class="pck-manual-cls" placeholder="Kelas (opsional)"/>
+            <button class="btn-hadd" onclick="addManualPck('peserta')">+ Tambah</button>
+          </div>
+          <span class="pck-count" id="pck-count-peserta">0 dipilih</span>
+        </div>
+      </div>
+    </div>
+    <!-- PANITIA HADIR -->
+    <div class="fg">
+      <div class="fl">Panitia Hadir</div>
+      <div class="htags" id="tg-panitia"></div>
+      <div class="pck-wrap">
+        <div class="pck-search"><span class="pck-search-ic">🔍</span><input type="text" placeholder="Cari nama…" oninput="pckSearch('panitia',this.value)"/></div>
+        <div class="pck-classes" id="pck-cls-panitia"></div>
+        <div class="pck-footer">
+          <div class="pck-manual-row">
+            <input type="text" id="pck-manual-inp-panitia" placeholder="Nama (pisah koma, atau Nama|Kelas)…" onkeydown="if(event.key==='Enter'){addManualPck('panitia');event.preventDefault()}"/>
+            <input type="text" id="pck-manual-cls-panitia" class="pck-manual-cls" placeholder="Kelas (opsional)"/>
+            <button class="btn-hadd" onclick="addManualPck('panitia')">+ Tambah</button>
+          </div>
+          <span class="pck-count" id="pck-count-panitia">0 dipilih</span>
+        </div>
+      </div>
+    </div>
+    <!-- NARASUMBER -->
+    <div class="fg">
+      <div class="fl">Narasumber</div>
+      <div class="htags" id="tg-narasumber"></div>
+      <div class="pck-wrap">
+        <div class="pck-search"><span class="pck-search-ic">🔍</span><input type="text" placeholder="Cari nama…" oninput="pckSearch('narasumber',this.value)"/></div>
+        <div class="pck-classes" id="pck-cls-narasumber"></div>
+        <div class="pck-footer">
+          <div class="pck-manual-row">
+            <input type="text" id="pck-manual-inp-narasumber" placeholder="Nama (pisah koma, atau Nama|Kelas)…" onkeydown="if(event.key==='Enter'){addManualPck('narasumber');event.preventDefault()}"/>
+            <input type="text" id="pck-manual-cls-narasumber" class="pck-manual-cls" placeholder="Kelas (opsional)"/>
+            <button class="btn-hadd" onclick="addManualPck('narasumber')">+ Tambah</button>
+          </div>
+          <span class="pck-count" id="pck-count-narasumber">0 dipilih</span>
+        </div>
+      </div>
+    </div>
+    <div class="fg">
+      <div class="fl">Biaya <span class="flb">Opsional</span></div>
+      <table class="btbl" onpaste="pasteBiayaSesi(event)"><thead><tr><th>Item</th><th>Est. Biaya (Rp)</th><th>Aktual (Rp)</th><th></th></tr></thead><tbody id="biaya-tbody"></tbody></table>
+      <div style="display:flex;gap:6px;margin-top:6px"><button class="btn-ar" onclick="addBiayaRow()">+ Tambah Item</button><button class="btn-ar" style="color:var(--gm)" onclick="openPasteBiayaSesi()" title="Paste dari Excel/Sheets: kolom Item | Est. Biaya | Aktual">📋 Paste Tabel</button></div>
+    </div>
+    <div class="fg"><div class="fl">Kendala</div><textarea class="fta" id="e_kend" style="min-height:54px" placeholder="Kendala yang dihadapi…"></textarea></div>
+    <div class="fg">
+      <div class="fl">URL Foto <span class="flb">Google Drive</span></div>
+      <input type="text" class="fi" id="e_foto" placeholder="https://drive.google.com/… (pisah koma)"/>
+      <div class="fhint">Pisahkan beberapa link dengan koma</div>
+    </div>
+    <div class="m-f"><button class="btn-cancel" onclick="closeModal('sesiModal')">Batal</button><button class="btn-save" onclick="saveSesi()">💾 Simpan</button></div>
+  </div>
+</div>
+
+<!-- MODAL JADWAL -->
+<div class="mov" id="jadwalModal">
+  <div class="modal" style="max-width:400px">
+    <div class="m-h"><span>📅</span><span class="m-t" id="jadMT">Jadwal</span><button class="m-x" onclick="closeModal('jadwalModal')">✕</button></div>
+    <input type="hidden" id="ej_idx"/>
+    <div class="fg"><div class="fl">Program Kerja</div><select class="fsel" id="ej_pid"></select></div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Tanggal</div><input type="date" class="fi" id="ej_tgl"/></div>
+      <div class="fg"><div class="fl">Jam</div><input type="time" class="fi" id="ej_jam"/></div>
+    </div>
+    <div class="fg"><div class="fl">Penanggung Jawab</div><input type="text" class="fi" id="ej_pj" placeholder="Nama penanggung jawab..."/></div>
+    <div class="fg"><div class="fl">Catatan</div><input type="text" class="fi" id="ej_catatan" placeholder="Catatan (opsional)..."/></div>
+    <div class="m-f"><button class="btn-cancel" onclick="closeModal('jadwalModal')">Batal</button><button class="btn-save" onclick="saveJadwal()">💾 Simpan</button></div>
+  </div>
+</div>
+
+<!-- MODAL PENGURUS -->
+<div class="mov" id="pengurusModal">
+  <div class="modal" style="max-width:420px">
+    <div class="m-h"><span>🎌</span><span class="m-t">Edit Pengurus</span><button class="m-x" onclick="closeModal('pengurusModal')">✕</button></div>
+    <input type="hidden" id="ep_idx"/>
+    <div class="g2">
+      <div class="fg"><div class="fl">Jabatan Level</div><select class="fsel" id="ep_level"><option value="ketua">ketua</option><option value="wakil">wakil</option><option value="sekretaris">sekretaris</option><option value="bendahara">bendahara</option><option value="bidang">bidang</option></select></div>
+      <div class="fg"><div class="fl">Nama Jabatan</div><input type="text" class="fi" id="ep_jabatan" placeholder="Ketua Umum…"/></div>
+    </div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Nama</div><input type="text" class="fi" id="ep_nama" placeholder="Nama lengkap…"/></div>
+      <div class="fg"><div class="fl">Kelas</div><input type="text" class="fi" id="ep_kelas" placeholder="XI…"/></div>
+    </div>
+    <div class="fg">
+      <div class="fl">Link Foto <span class="flb">Google Drive</span></div>
+      <input type="text" class="fi" id="ep_foto" placeholder="https://drive.google.com/file/d/…"/>
+      <div class="fhint">Paste link Google Drive — thumbnail otomatis diambil</div>
+    </div>
+    <div class="fg"><div class="fl">Deskripsi Jabatan</div><textarea class="fta" id="ep_desc" style="min-height:56px" placeholder="Deskripsi singkat tugas…"></textarea></div>
+    <div class="m-f"><button class="btn-cancel" onclick="closeModal('pengurusModal')">Batal</button><button class="btn-save" onclick="savePengurus()">💾 Simpan</button></div>
+  </div>
+</div>
+
+<!-- MODAL UPLOAD KONFIRMASI -->
+<div class="mov" id="uploadModal">
+  <div class="modal" style="max-width:440px">
+    <div class="m-h"><span>☁️</span><span class="m-t">Konfirmasi Upload</span><button class="m-x" onclick="closeModal('uploadModal')">✕</button></div>
+    <p style="font-size:.84rem;color:var(--gd);margin-bottom:13px;line-height:1.65">Upload akan <strong>menimpa seluruh isi sheet</strong> yang terdampak. Semua baris lama dihapus, lalu data terbaru di-insert sekaligus.</p>
+    <div id="upSummary" style="background:var(--ow);border-radius:var(--rx);padding:12px;font-size:.8rem;margin-bottom:4px"></div>
+    <div class="up-prog" id="upProgress">
+      <div style="font-size:.75rem;font-weight:600;margin-bottom:4px">Progress Upload</div>
+      <div class="up-bar-wrap"><div class="up-bar" id="upBar"></div></div>
+      <div class="up-step" id="upStep">Menunggu…</div>
+    </div>
+    <div class="m-f"><button class="btn-cancel" onclick="closeModal('uploadModal')">Batal</button><button class="btn-save" id="btnCU" onclick="confirmUpload()">🚀 Upload Sekarang</button></div>
+  </div>
+</div>
+
+<script src="app_input.js"></script>
+<script src="laporan.js"></script>
+<script src="music-player.js"></script>
+<!-- UPLOAD LOADING OVERLAY -->
+<div class="ulov" id="ulov">
+  <div class="ulov-sakura" id="ulovSakura"></div>
+  <div class="ulov-bg"></div>
+  <div class="ulov-grid"></div>
+  <div class="ulov-content">
+    <div class="ulov-logo">
+      <img src="logo-jcosasi.png" alt="JCOSASI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
+      <span class="ulov-logo-fallback" style="display:none">🎌</span>
+    </div>
+    <div class="ulov-title">JCOSASI</div>
+    <div class="ulov-subtitle">Menyimpan perubahan…</div>
+    <div class="ulov-bar-wrap"><div class="ulov-bar"></div></div>
+    <div class="ulov-step" id="ulovStep">Mempersiapkan upload…</div>
+    <div class="ulov-warn">⚠️ Jangan tutup atau refresh halaman ini</div>
+  </div>
+</div>
+
+<!-- MODAL PENCAPAIAN -->
+<div class="mov" id="capModal">
+  <div class="modal" style="max-width:640px;max-height:93vh;overflow-y:auto">
+    <div class="m-h">
+      <span>🏆</span>
+      <span class="m-t">Tambah Pencapaian</span>
+      <button class="m-x" onclick="closeModal('capModal')">✕</button>
+    </div>
+
+    <!-- MODE SWITCH -->
+    <!-- PANDUAN PENILAIAN — accordion lipat -->
+    <div class="cap-guide-wrap" id="capGuideWrap">
+      <button class="cap-guide-toggle" id="capGuideToggle" onclick="toggleCapGuide()" type="button">
+        <span>📖 Panduan Penilaian</span>
+        <span class="cap-guide-chevron" id="capGuideChevron">▾</span>
+      </button>
+      <div class="cap-guide-body" id="capGuideBody" style="display:none"></div>
+    </div>
+
+    <div class="cap-mode-row">
+      <button class="cap-mode-btn active" id="capModeBatch" onclick="switchCapMode('batch')">📋 Batch — pencapaian sama</button>
+      <button class="cap-mode-btn" id="capModeIndiv" onclick="switchCapMode('individual')">✏️ Individual — tiap orang beda</button>
+    </div>
+
+    <!-- ══ MODE BATCH ══ -->
+    <div id="capBatchForm">
+      <!-- Pencapaian & Emblem -->
+      <div class="fg"><div class="fl">Nama Pencapaian</div>
+        <input type="text" class="fi" id="cap_pencapaian" placeholder="cth: Juara 1 Lomba Nihongo…"/>
+      </div>
+      <div class="fg"><div class="fl">Emblem</div>
+        <input type="hidden" id="cap_emblem_val"/>
+        <div class="cap-emblem-grid" id="capEmblemGrid">
+          <button type="button" class="cap-emblem-btn selected" data-icon="" onclick="selectEmblem(this,'cap_emblem_val','capEmblemGrid')">
+            <span style="font-size:1rem;line-height:1.6">—</span><small>Tanpa</small>
+          </button>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="fg"><div class="fl">Poin</div>
+          <input type="number" class="fi" id="cap_poin" placeholder="cth: 10" min="0"/>
+        </div>
+        <div class="fg"><div class="fl">Tanggal</div>
+          <input type="date" class="fi" id="cap_waktu"/>
+        </div>
+      </div>
+      <div class="fg"><div class="fl">Keterangan</div>
+        <textarea class="fta" rows="2" id="cap_keterangan" placeholder="Keterangan tambahan…"></textarea>
+      </div>
+
+      <!-- Penerima -->
+      <div class="fg">
+        <div class="fl" style="margin-bottom:6px">Penerima <span style="color:var(--gm);font-weight:400;text-transform:none">— pilih dari daftar atau ketik manual</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <input type="text" class="fi" id="capSearchInput" placeholder="🔍 Cari nama anggota…" oninput="renderCapAnggotaList(this.value)" style="flex:1"/>
+          <button type="button" class="btn-ar" onclick="toggleSelectAllCap()" style="white-space:nowrap;flex-shrink:0">Pilih Semua</button>
+        </div>
+        <div id="capAnggotaList" class="cap-ang-list"></div>
+        <!-- Input manual -->
+        <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+          <input type="text" class="fi" id="capManualInput" placeholder="Atau ketik nama manual lalu Enter…" style="flex:1"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addCapManual();}"/>
+          <button type="button" class="btn-ar" onclick="addCapManual()" style="white-space:nowrap;flex-shrink:0">+ Tambah</button>
+        </div>
+        <div id="capManualList" class="cap-manual-list"></div>
+      </div>
+    </div>
+
+    <!-- ══ MODE INDIVIDUAL ══ -->
+    <div id="capIndivForm" style="display:none">
+      <div style="position:relative;margin-bottom:8px">
+        <input type="text" class="fi" id="capIndivSearchInput"
+          placeholder="🔍 Ketik nama anggota dari daftar…"
+          oninput="showCapIndivDropdown(this.value)"
+          onkeydown="if(event.key==='Escape')hideCapIndivDropdown()"
+          autocomplete="off"/>
+        <div id="capIndivDropdown" class="cap-indiv-dropdown" style="display:none"></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input type="text" class="fi" id="capIndivManual" placeholder="Atau ketik nama manual lalu Enter…" style="flex:1"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addCapIndivManual();}"/>
+        <button type="button" class="btn-ar" onclick="addCapIndivManual()" style="flex-shrink:0;white-space:nowrap">+ Manual</button>
+      </div>
+      <!-- Tabel individual rows -->
+      <div id="capIndivRows" class="cap-indiv-rows"></div>
+      <div class="fhint" style="margin-top:4px">Setiap baris bisa diisi pencapaian, emblem, poin, dan keterangan yang berbeda.</div>
+      <!-- Tanggal global -->
+      <div class="fg" style="margin-top:10px"><div class="fl">Tanggal (berlaku untuk semua)</div>
+        <input type="date" class="fi" id="cap_waktu_indiv"/>
+      </div>
+    </div>
+
+    <div class="m-f">
+      <button class="btn-cancel" onclick="closeModal('capModal')">Batal</button>
+      <button class="btn-save" onclick="saveCap()">💾 Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PENGUMUMAN -->
+<div class="mov" id="pgmModal">
+  <div class="modal" style="max-width:560px">
+    <div class="m-h"><span>📣</span><span class="m-t" id="pgmModalTitle">Tambah Pengumuman</span><button class="m-x" onclick="closeModal('pgmModal')">✕</button></div>
+    <input type="hidden" id="pgm_idx"/>
+
+    <div class="g2">
+      <div class="fg" style="grid-column:1/-1"><div class="fl">Judul <span style="color:var(--rd)">*</span></div><input type="text" class="fi" id="pgm_judul" placeholder="Judul pengumuman..."/></div>
+    </div>
+    <div class="fg"><div class="fl">Deskripsi</div><textarea class="fta" rows="3" id="pgm_deskripsi" placeholder="Deskripsi singkat pengumuman..."></textarea></div>
+    <div class="fg"><div class="fl">URL Poster / Flyer</div><input type="text" class="fi" id="pgm_poster_url" placeholder="https://drive.google.com/... atau URL gambar lainnya"/><div class="fhint">Mendukung Google Drive, Canva, imgbb, dll.</div></div>
+
+    <div class="g2">
+      <div class="fg"><div class="fl">Tanggal Publish</div><input type="date" class="fi" id="pgm_tanggal_publish"/><div class="fhint">Pengumuman mulai tampil</div></div>
+      <div class="fg"><div class="fl">Tanggal Turun</div><input type="date" class="fi" id="pgm_tanggal_turun"/><div class="fhint">Pengumuman disembunyikan</div></div>
+    </div>
+
+    <div class="g2">
+      <div class="fg"><div class="fl">Waktu Kegiatan</div><input type="text" class="fi" id="pgm_waktu_kegiatan" placeholder="cth: Sabtu, 14:00 WIB"/></div>
+      <div class="fg"><div class="fl">Lokasi</div><input type="text" class="fi" id="pgm_lokasi_kegiatan" placeholder="cth: Ruang Teori Lt.2"/></div>
+    </div>
+
+    <div class="g2">
+      <div class="fg"><div class="fl">Target Audiens</div><input type="text" class="fi" id="pgm_target_audiens" placeholder="cth: Semua anggota, Kelas XII"/></div>
+      <div class="fg"><div class="fl">Tag / Kategori</div><input type="text" class="fi" id="pgm_tag" placeholder="cth: Acara, Info, Lomba"/></div>
+    </div>
+
+    <div class="g2">
+      <div class="fg"><div class="fl">Prioritas</div>
+        <select class="fsel" id="pgm_prioritas">
+          <option value="normal">✅ Normal</option>
+          <option value="penting">⚠️ Penting</option>
+          <option value="urgent">🚨 Urgent</option>
+        </select>
+      </div>
+      <div class="fg"><div class="fl">Efek Poster</div>
+        <select class="fsel" id="pgm_efek_poster">
+          <option value="none">— Tanpa Efek —</option>
+          <option value="sakura">🌸 Sakura</option>
+          <option value="backlight">✨ Backlight</option>
+          <option value="bioskop">🎬 Bioskop</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="fg"><div class="fl">Persiapan</div><textarea class="fta" rows="3" id="pgm_persiapan" placeholder="Hal-hal yang perlu disiapkan peserta..."></textarea></div>
+    <div class="fg"><div class="fl">Cara Mendaftar</div><textarea class="fta" rows="3" id="pgm_cara_daftar" placeholder="Langkah-langkah pendaftaran..."></textarea></div>
+    <div class="fg"><div class="fl">Link Pendaftaran / Eksternal</div><input type="text" class="fi" id="pgm_link_pendaftaran" placeholder="https://..."/></div>
+
+    <div class="fg"><div class="fl">Narahubung — Nama</div><input type="text" class="fi" id="pgm_narahubung_nama" placeholder="Nama narahubung"/></div>
+    <div class="fg"><div class="fl">Narahubung — Kontak</div><input type="text" class="fi" id="pgm_narahubung_kontak" placeholder="No HP / WA / Instagram"/></div>
+
+    <div class="fg">
+      <div class="fl">Dokumen / Lampiran</div>
+      <div class="fhint" style="margin-bottom:6px">Format: Judul dokumen dipisah titik koma (;), URL juga dipisah titik koma</div>
+      <input type="text" class="fi" id="pgm_dokumen_judul" placeholder="Surat Undangan; Formulir Pendaftaran" style="margin-bottom:6px"/>
+      <input type="text" class="fi" id="pgm_dokumen_url" placeholder="https://drive.google.com/...; https://..."/>
+    </div>
+
+    <div class="fg"><div class="fl">Status Aktif</div>
+      <select class="fsel" id="pgm_aktif">
+        <option value="TRUE">✅ Aktif</option>
+        <option value="FALSE">⛔ Nonaktif</option>
+      </select>
+    </div>
+
+    <div class="m-f">
+      <button class="btn-cancel" onclick="closeModal('pgmModal')">Batal</button>
+      <button class="btn-save" onclick="savePgm()">💾 Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PENGUMUMAN -->
+<div class="mov" id="pgmModal">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="m-h"><span>📣</span><span class="m-t" id="pgmModalTitle">Tambah Pengumuman</span><button class="m-x" onclick="closeModal('pgmModal')">✕</button></div>
+    <input type="hidden" id="pgm_idx"/>
+    <div class="fg"><div class="fl">Judul <span style="color:var(--rd)">*</span></div><input type="text" class="fi" id="pgm_judul" placeholder="Judul pengumuman..."/></div>
+    <div class="fg"><div class="fl">Deskripsi</div><textarea class="fta" rows="3" id="pgm_deskripsi" placeholder="Deskripsi singkat..."></textarea></div>
+    <div class="fg"><div class="fl">URL Poster / Flyer</div><input type="text" class="fi" id="pgm_poster_url" placeholder="https://drive.google.com/... atau URL lainnya"/><div class="fhint">Google Drive, Canva, imgbb, dll.</div></div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Tanggal Publish</div><input type="date" class="fi" id="pgm_tanggal_publish"/></div>
+      <div class="fg"><div class="fl">Tanggal Turun</div><input type="date" class="fi" id="pgm_tanggal_turun"/></div>
+    </div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Waktu Kegiatan</div><input type="text" class="fi" id="pgm_waktu_kegiatan" placeholder="cth: Sabtu, 14:00 WIB"/></div>
+      <div class="fg"><div class="fl">Lokasi</div><input type="text" class="fi" id="pgm_lokasi_kegiatan" placeholder="cth: Ruang Teori Lt.2"/></div>
+    </div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Target Audiens</div><input type="text" class="fi" id="pgm_target_audiens" placeholder="cth: Semua anggota"/></div>
+      <div class="fg"><div class="fl">Tag / Kategori</div><input type="text" class="fi" id="pgm_tag" placeholder="cth: Acara, Info, Lomba"/></div>
+    </div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Prioritas</div>
+        <select class="fsel" id="pgm_prioritas">
+          <option value="normal">✅ Normal</option>
+          <option value="penting">⚠️ Penting</option>
+          <option value="urgent">🚨 Urgent</option>
+        </select>
+      </div>
+      <div class="fg"><div class="fl">Efek Poster</div>
+        <select class="fsel" id="pgm_efek_poster">
+          <option value="none">— Tanpa Efek —</option>
+          <option value="sakura">🌸 Sakura</option>
+          <option value="backlight">✨ Backlight</option>
+          <option value="bioskop">🎬 Bioskop</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg"><div class="fl">Persiapan</div><textarea class="fta" rows="3" id="pgm_persiapan" placeholder="Hal yang perlu disiapkan..."></textarea></div>
+    <div class="fg"><div class="fl">Cara Mendaftar</div><textarea class="fta" rows="3" id="pgm_cara_daftar" placeholder="Langkah pendaftaran..."></textarea></div>
+    <div class="fg"><div class="fl">Link Pendaftaran / Eksternal</div><input type="text" class="fi" id="pgm_link_pendaftaran" placeholder="https://..."/></div>
+    <div class="g2">
+      <div class="fg"><div class="fl">Narahubung — Nama</div><input type="text" class="fi" id="pgm_narahubung_nama" placeholder="Nama narahubung"/></div>
+      <div class="fg"><div class="fl">Narahubung — Kontak</div><input type="text" class="fi" id="pgm_narahubung_kontak" placeholder="No HP / WA"/></div>
+    </div>
+    <div class="fg">
+      <div class="fl">Dokumen Lampiran</div>
+      <div class="fhint" style="margin-bottom:6px">Pisahkan beberapa dokumen dengan titik koma ( ; )</div>
+      <input type="text" class="fi" id="pgm_dokumen_judul" placeholder="Judul dok 1; Judul dok 2" style="margin-bottom:6px"/>
+      <input type="text" class="fi" id="pgm_dokumen_url"   placeholder="https://... ; https://..."/>
+    </div>
+    <div class="fg"><div class="fl">Status</div>
+      <select class="fsel" id="pgm_aktif">
+        <option value="TRUE">✅ Aktif (tampil di publik)</option>
+        <option value="FALSE">⛔ Nonaktif (tersembunyi)</option>
+      </select>
+    </div>
+    <div class="m-f">
+      <button class="btn-cancel" onclick="closeModal('pgmModal')">Batal</button>
+      <button class="btn-save" onclick="savePgm()">💾 Simpan</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
