@@ -48,13 +48,20 @@ function makeRowId(sh, obj) {
 }
 
 const PK = {
-  '01':{n:'Pembelajaran Bhs. Jepang',i:'📚'},'02':{n:'Bidang Akademik',i:'🏫'},
-  '03':{n:'Proyek Minat & Bakat',i:'🎨'},'04':{n:'Rapat Bulanan',i:'🤝'},
-  '05':{n:'DIKLAT',i:'🔥'},'06':{n:'DEMOS/MPLS',i:'🌸'},
-  '07':{n:'JCOSASI Tanjoubi',i:'🎊'},'08':{n:'Pelantikan Anggota',i:'🎌'},
-  '09':{n:'Class Meeting',i:'🏆'},'10':{n:'Serah Terima Jabatan',i:'🙏'},
-  '11':{n:'Lomba & Kompetisi',i:'💪'},'12':{n:'Konten Sosial Media',i:'📱'},
-  '13':{n:'Kintore Bersama',i:'🏃'},'14':{n:'Sharing Alumni',i:'🎓'},
+  '01':{n:'Pembelajaran Bahasa Jepang',i:'📚'},
+  '02':{n:'Bidang Akademik Bahasa Jepang',i:'🏫'},
+  '03':{n:'Proyek Minat & Bakat',i:'🎨'},
+  '04':{n:'Bidang Organisasi & Kekompakan',i:'🤝'},
+  '05':{n:'DIKLAT',i:'🎓'},
+  '06':{n:'DEMOS Ekskul',i:'📢'},
+  '07':{n:'JCOSASI Tanjoubi & Workshop',i:'🎉'},
+  '08':{n:'Pelantikan Anggota',i:'🏅'},
+  '09':{n:'Kolaborasi Class Meeting',i:'🤜'},
+  '10':{n:'Serah Terima Jabatan',i:'🔁'},
+  '11':{n:'Mengikuti Lomba',i:'🏆'},
+  '12':{n:'Konten Kreatif & Sosial Media',i:'📱'},
+  '13':{n:'Kintore Bersama',i:'💪'},
+  '14':{n:'Sharing Bersama Alumni',i:'🫂'},
   '15':{n:'Kegiatan Lainnya',i:'📌'}
 };
 
@@ -408,7 +415,10 @@ function renderAG() {
       if(day.jads.length)  lines.push('📅 '+day.jads.map(j=>PK[j.pid]?.n||j.pid).join(', '));
       if(day.pend)         lines.push('⚠️ Belum ada dokumentasi!');
       const tipText = fDate(day.iso) + (lines.length ? '\n'+lines.join('\n') : '');
-      return `<div class="act-day" data-state="${day.st}" data-tip="${esc(tipText)}" onmouseenter="showTip(event,this)" onmouseleave="hideTip()"></div>`;
+      const hasInfo = day.sesis.length || day.jads.length || day.pend;
+      return `<div class="act-day" data-state="${day.st}" data-iso="${day.iso}" data-tip="${esc(tipText)}"
+        ${hasInfo ? `onclick="showActDayPanel('${day.iso}')"` : ''}
+        onmouseenter="showTip(event,this)" onmouseleave="hideTip()"></div>`;
     }).join('')}</div>`
   ).join('');
 
@@ -434,8 +444,115 @@ function renderAG() {
 }
 
 function aC(s) { return {actual:'#16A34A',pending:'#DC2626',today:'#9B59D4','today-planned':'#6B34AF',planned:'rgba(107,52,175,.5)',past:'#D4CFF0',future:'#EDEAF6'}[s]||'#EEE'; }
-function showTip(e, el) { const t=document.getElementById('actTip'); t.style.cssText=`opacity:1;left:${e.clientX+12}px;top:${e.clientY-10}px;white-space:pre`; t.textContent=el.dataset.tip||''; }
+function showTip(e, el) {
+  // Di mobile (touch), jangan tampilkan tooltip — pakai panel onclick
+  if (window.matchMedia('(hover:none)').matches) return;
+  const t = document.getElementById('actTip');
+  t.style.cssText = `opacity:1;left:${e.clientX+12}px;top:${e.clientY-10}px;white-space:pre`;
+  t.textContent = el.dataset.tip || '';
+}
 function hideTip() { document.getElementById('actTip').style.opacity='0'; }
+
+function showActDayPanel(iso) {
+  hideTip();
+  // Kumpulkan data hari ini
+  const jadsHari = S.jad.filter(j => !j._d && j.tanggal === iso)
+                        .sort((a,b) => (a.jam||'') > (b.jam||'') ? 1 : -1);
+  const doksHari = S.dok.filter(d => !d._d && d.tanggal_sesi === iso);
+  const isPend   = jadsHari.some(j => !S.dok.find(d => !d._d && d.tanggal_sesi === j.tanggal));
+
+  // Tanggal header
+  const tgl = fDate(iso);
+  const isToday = iso === S.today;
+  const isPast  = iso < S.today;
+
+  let html = `<div class="adp-date">${tgl}${isToday ? ' <span class="adp-badge adp-today">Hari ini</span>' : ''}</div>`;
+
+  // ── JADWAL ──
+  if (jadsHari.length) {
+    html += `<div class="adp-sec">📅 Jadwal</div>`;
+    html += jadsHari.map(j => {
+      const info  = PK[j.proker_id] || {n:'Proker '+j.proker_id, i:'📌'};
+      const dokAda = doksHari.some(d => d.proker_id === j.proker_id);
+      return `<div class="adp-jrow">
+        <div class="adp-jic">${info.i}</div>
+        <div class="adp-jbody">
+          <div class="adp-jnm">${esc(info.n)}</div>
+          <div class="adp-jmeta">
+            ${j.jam ? `<span>⏰ ${j.jam}</span>` : ''}
+            ${j.penanggung_jawab ? `<span>👤 ${esc(j.penanggung_jawab)}</span>` : ''}
+            ${j.catatan ? `<span>📝 ${esc(j.catatan)}</span>` : ''}
+          </div>
+        </div>
+        <div class="adp-jstatus">${dokAda
+          ? '<span class="adp-badge adp-ok">✅ Ada dok</span>'
+          : isPast
+            ? '<span class="adp-badge adp-warn">⚠️ Belum dok</span>'
+            : '<span class="adp-badge adp-plan">📋 Rencana</span>'
+        }</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── DOKUMENTASI ──
+  if (doksHari.length) {
+    html += `<div class="adp-sec">📋 Dokumentasi Sesi</div>`;
+    html += doksHari.map(d => {
+      const info    = PK[d.proker_id] || {n:'Proker '+d.proker_id, i:'📌'};
+      const peserta = spl(d.hadir_peserta);
+      const panitia = spl(d.hadir_panitia);
+      const waktu   = (d.waktu_mulai||'') + (d.waktu_selesai ? '–'+d.waktu_selesai : '');
+      const biaya   = pBiaya(d.biaya_aktual);
+      return `<div class="adp-drow">
+        <div class="adp-dhead">
+          <span class="adp-dic">${info.i}</span>
+          <span class="adp-dnm">${esc(info.n)}</span>
+          ${waktu ? `<span class="adp-dwaktu">⏱ ${waktu}</span>` : ''}
+        </div>
+        ${d.keterangan ? `<div class="adp-dket">${esc(d.keterangan)}</div>` : ''}
+        <div class="adp-dmeta">
+          ${peserta.length ? `<span>👥 ${peserta.length} peserta</span>` : ''}
+          ${panitia.length ? `<span>🛠️ ${panitia.length} panitia</span>` : ''}
+          ${biaya ? `<span>💰 Rp ${biaya.toLocaleString('id')}</span>` : ''}
+        </div>
+        ${d.materi ? `<div class="adp-dmateri">📖 ${esc(d.materi.slice(0,80))}${d.materi.length>80?'…':''}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  // Jika kosong total
+  if (!jadsHari.length && !doksHari.length) {
+    html += `<div class="adp-empty">Tidak ada kegiatan pada hari ini</div>`;
+  }
+
+  // Footer aksi
+  const footBtns = [];
+  if (doksHari.length) {
+    const pid = doksHari[0].proker_id;
+    footBtns.push(`<button class="btn-ar adp-btn" onclick="closeActDayPanel();filterGo('${pid}')">📋 Lihat Sesi</button>`);
+  }
+  if (jadsHari.length && !doksHari.length && isPast) {
+    const pid = jadsHari[0].proker_id;
+    footBtns.push(`<button class="btn-add adp-btn" onclick="closeActDayPanel();openSesiFromPend('${pid}','${iso}','${jadsHari[0].jam||'14:00'}')">✏️ Isi Dokumentasi</button>`);
+  }
+  if (footBtns.length) html += `<div class="adp-foot">${footBtns.join('')}</div>`;
+
+  // Tampilkan panel
+  const panel = document.getElementById('actDayPanel');
+  const overlay = document.getElementById('actDayOverlay');
+  document.getElementById('actDayBody').innerHTML = html;
+  panel.classList.add('show');
+  overlay.classList.add('show');
+}
+
+function closeActDayPanel() {
+  const panel = document.getElementById('actDayPanel');
+  const overlay = document.getElementById('actDayOverlay');
+  panel.classList.remove('show');
+  overlay.classList.remove('show');
+  // Bersihkan konten setelah animasi selesai (270ms)
+  setTimeout(() => { document.getElementById('actDayBody').innerHTML = ''; }, 280);
+}
 function toISO(d) { return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
 function p2(n) { return n < 10 ? '0'+n : ''+n; }
 
