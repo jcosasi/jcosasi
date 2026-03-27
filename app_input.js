@@ -21,7 +21,7 @@ const SH = {
   // id = key unik per baris; delete_flag = 'TRUE' artinya baris mati
   proker_dokumentasi:  ['id','proker_id','tanggal_sesi','foto_url','keterangan','hadir_peserta','kelas_peserta','hadir_panitia','kelas_panitia','hadir_narasumber','kelas_narasumber','materi','waktu_mulai','waktu_selesai','item_biaya','estimasi_biaya_item','biaya_aktual','kendala','delete_flag'],
   proker_jadwal:       ['id','proker_id','tanggal','jam','catatan','penanggung_jawab','delete_flag'],
-  proker_detail:       ['id','proker_id','tujuan','deskripsi_kegiatan','waktu_teks','estimasi_tanggal','lokasi','sasaran','pemateri','panitia','item_biaya','estimasi_biaya_item','biaya_aktual','delete_flag'],
+  proker_detail:       ['id','proker_id','judul','ikon','tujuan','deskripsi_kegiatan','waktu_teks','estimasi_tanggal','lokasi','sasaran','pemateri','panitia','item_biaya','estimasi_biaya_item','biaya_aktual','delete_flag'],
   proker_notif_config: ['id','proker_id','countdown_aktif','ajakan','ajakan_teks','ajakan_sub','wajib_hadir','wajib_hadir_teks','wajib_hadir_sanksi','delete_flag'],
   anggota:             ['id','nama','kelas','angkatan','status','no_hp','catatan','delete_flag'],
   pengurus:            ['jabatan_level','jabatan','nama','kelas','foto_url','bidang_nama','deskripsi_jabatan'],
@@ -311,6 +311,7 @@ async function init() {
     _dataReady = true;
     _setLtx('Data siap — masukkan token untuk melanjutkan');
     _checkCanDismiss();
+    buildPK();
     renderAll();
   } catch(e) {
     setS('error', 'Gagal');
@@ -323,6 +324,20 @@ async function init() {
 }
 
 /* ═══════ RENDER ALL ═══════ */
+function buildPK() {
+  S.det.forEach(d => {
+    if (!d.proker_id) return;
+    const judul = (d.judul || '').trim();
+    const ikon  = (d.ikon  || '').trim();
+    if (judul || ikon) {
+      PK[d.proker_id] = {
+        n: judul || PK[d.proker_id]?.n || 'Proker ' + d.proker_id,
+        i: ikon  || PK[d.proker_id]?.i || '📌'
+      };
+    }
+  });
+}
+
 function renderAll() {
   renderOv(); renderDok(); renderJad(); renderDet();
   renderNotif(); renderAng(); renderPeng(); renderPgm(); renderCap(); updateBadges();
@@ -1706,7 +1721,7 @@ async function confirmUpload() {
     setUploadStep('✅ Upload selesai!');
     setTimeout(() => hideUploadOverlay(), 800);
     toast('🎉 Upload berhasil!', 'success');
-    renderAll(); renderChangelog();
+    buildPK(); renderAll(); renderChangelog();
     setTimeout(() => silentReload(), 3000); // beri GAS waktu proses sebelum re-fetch
   } else {
     try { await setLockRow(_localVersion || newVersion, 'free', '', ''); } catch(_) {}
