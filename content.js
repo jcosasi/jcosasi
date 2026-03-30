@@ -139,7 +139,7 @@ kontak: {
       {
         num:   "01", icon: "📚", cat: "rutin akademik",
         tag:   "Rutin",         tag_class: "tag-rutin",
-        judul: "Pembelajaran Bahasa Jepang",
+        judul: "Bahasa Jepang",
         desc:  "Belajar bahasa Jepang bukan hanya soal hafalan — di JCOSASI, belajar dilakukan secara terstruktur dan menyenangkan bersama <em>sensei</em> setiap hari Jumat. Mulai dari aksara, kosakata, hingga tata bahasa, semua dipelajari secara bertahap menggunakan buku <strong>Minna no Nihongo</strong>.",
         detail: [
           { label: "🕐 Waktu",   val: "Setiap Jumat" },
