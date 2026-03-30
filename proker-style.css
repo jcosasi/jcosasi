@@ -27,19 +27,20 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; overflow-x: hidden; }
 body {
   font-family: var(--font-body);
   background: var(--off-white);
   color: var(--grey-dark);
   line-height: 1.7;
+  overflow-x: hidden;
 }
 a { text-decoration: none; color: inherit; }
 img { max-width: 100%; display: block; }
 
 /* ── NAVBAR ── */
 .pnav {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 100;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   height: var(--nav-h);
   background: var(--white);
   border-bottom: 1px solid var(--grey-light);
@@ -87,6 +88,7 @@ img { max-width: 100%; display: block; }
 .pcontainer {
   max-width: 900px; margin: 0 auto;
   padding: calc(var(--nav-h) + 40px) 24px 80px;
+  overflow-x: hidden;
 }
 
 /* ── HERO PROKER ── */
@@ -198,7 +200,7 @@ img { max-width: 100%; display: block; }
   text-transform: uppercase; color: var(--grey-mid);
   font-family: var(--font-jp);
 }
-.pcard-body { padding: 28px; }
+.pcard-body { padding: 28px; overflow-x: hidden; }
 
 /* ── PEMBERITAHUAN ── */
 .notif-empty {
@@ -323,6 +325,7 @@ img { max-width: 100%; display: block; }
 
 .activity-scroll-wrapper {
   overflow-x: auto;
+  max-width: 100%;
   padding-bottom: 10px;
   /* Scrollbar styling agar konsisten */
   scrollbar-width: thin;
