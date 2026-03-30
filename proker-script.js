@@ -722,6 +722,12 @@ function renderDok(dok) {
           <button class="dsh-print-btn" title="Cetak laporan sesi ini"
             onclick="event.stopPropagation(); printProkerSesi(${idx})"
           >🖨️</button>
+          <button class="dsh-view-btn" title="Lihat laporan sesi"
+            onclick="event.stopPropagation(); viewProkerSesi(${idx})"
+          >👁️</button>
+          <button class="dsh-link-btn" title="Salin link laporan sesi"
+            onclick="event.stopPropagation(); copyLinkSesi(${idx})"
+          >🔗</button>
           <span class="dsh-toggle" id="toggle-icon-${idx}">▾</span>
         </div>
       </div>
@@ -752,6 +758,178 @@ function printProkerSesi(idx) {
   if (typeof printLaporanSesi === 'function') {
     printLaporanSesi(idx);
   }
+}
+
+/* ══════════════════════════════════════════════
+   VIEW LAPORAN SESI — tanpa tanda tangan
+══════════════════════════════════════════════ */
+function buildSesiViewHtml(idx) {
+  const s = window._prokerSesiList && window._prokerSesiList[idx];
+  if (!s) return '';
+  const d = s.rows[0];
+  const { fotos, biayaRows } = parseDokRow(d);
+
+  const tglStr = d.tanggal_sesi ? formatTglPanjang(d.tanggal_sesi) : '–';
+  const jamStr = (d.waktu_mulai && d.waktu_selesai)
+    ? `${d.waktu_mulai} – ${d.waktu_selesai}`
+    : d.waktu_mulai || '';
+  const dur    = hitungDurasi(d.waktu_mulai, d.waktu_selesai);
+  const ket    = d.keterangan || '';
+
+  // Helper hadir
+  function hadirBlok(kolom, label, ikon) {
+    const raw = d[kolom]; if (!raw) return '';
+    const names = raw.split(',').map(n => n.trim()).filter(Boolean);
+    const listHtml = names.length === 1
+      ? `<span class="sv-name-single">${names[0]}</span>`
+      : `<ul class="sv-name-list">${names.map(n => `<li>${n}</li>`).join('')}</ul>`;
+    return `<div class="sv-hadir-blok">
+      <div class="sv-hadir-label">${ikon} ${label} <span class="sv-hadir-n">(${names.length})</span></div>
+      ${listHtml}
+    </div>`;
+  }
+
+  const hadirParts = [
+    hadirBlok('hadir_peserta',    'Peserta',    '👥'),
+    hadirBlok('hadir_panitia',    'Panitia',    '🤝'),
+    hadirBlok('hadir_narasumber', 'Narasumber', '🎤'),
+  ].filter(Boolean);
+
+  let totBiaya = 0, totEst = 0;
+  biayaRows.forEach(i => { totBiaya += rupiahNum(i.biaya_aktual); totEst += rupiahNum(i.estimasi_biaya_item); });
+
+  const fotoSection = fotos.length ? `
+    <div class="sv-section">
+      <div class="sv-sec-label">📷 Foto Kegiatan</div>
+      <div class="sv-foto-grid">${fotos.map(url => {
+        const src = convertGDriveUrl(url);
+        return `<a href="${url}" target="_blank" rel="noopener" class="sv-foto-wrap">
+          <img src="${src}" alt="Foto kegiatan" loading="lazy"
+               onerror="this.closest('.sv-foto-wrap').innerHTML='<div class=\'sv-foto-err\'>🖼️</div>'"/>
+        </a>`;
+      }).join('')}</div>
+    </div>` : '';
+
+  const hadirSection = hadirParts.length ? `
+    <div class="sv-section">
+      <div class="sv-sec-label">✅ Daftar Hadir</div>
+      <div class="sv-hadir-grid">${hadirParts.join('')}</div>
+    </div>` : '';
+
+  const materiSection = (d.materi || d.progress) ? `
+    <div class="sv-section">
+      <div class="sv-sec-label">📖 Materi &amp; Progress</div>
+      <div class="sv-text">${d.materi || d.progress}</div>
+    </div>` : '';
+
+  const biayaSection = biayaRows.length ? `
+    <div class="sv-section">
+      <div class="sv-sec-label">💰 Biaya Kegiatan</div>
+      <table class="sv-table">
+        <thead><tr><th>Item</th><th>Estimasi</th><th>Aktual</th></tr></thead>
+        <tbody>${biayaRows.map(i => {
+          const est = rupiahNum(i.estimasi_biaya_item), akt = rupiahNum(i.biaya_aktual);
+          return `<tr>
+            <td>${i.item_biaya || '–'}</td>
+            <td class="sv-num">${est ? rupiah(est) : '–'}</td>
+            <td class="sv-num">${akt ? rupiah(akt) : '–'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr class="sv-total"><td>Total</td><td>${totEst ? rupiah(totEst) : '–'}</td><td>${rupiah(totBiaya) || '–'}</td></tr></tfoot>
+      </table>
+    </div>` : '';
+
+  const kendalaSection = d.kendala ? `
+    <div class="sv-section">
+      <div class="sv-sec-label">⚠️ Kendala &amp; Evaluasi</div>
+      <div class="sv-text sv-kendala">${d.kendala}</div>
+    </div>` : '';
+
+  return `
+    <div class="sv-header">
+      <div class="sv-proker-name" id="svProkerName"></div>
+      <div class="sv-tgl">${tglStr}</div>
+      ${jamStr ? `<div class="sv-jam">⏰ ${jamStr}${dur ? ` · ${dur}` : ''}</div>` : ''}
+      ${ket ? `<div class="sv-ket">${ket}</div>` : ''}
+    </div>
+    ${fotoSection}${hadirSection}${materiSection}${biayaSection}${kendalaSection}
+  `;
+}
+
+function openSesiView(idx) {
+  const html = buildSesiViewHtml(idx);
+  if (!html) return;
+
+  // Buat overlay jika belum ada
+  let overlay = document.getElementById('sesiViewOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'sesiViewOverlay';
+    overlay.className = 'sv-overlay';
+    overlay.innerHTML = `
+      <div class="sv-modal" id="sesiViewModal">
+        <div class="sv-modal-head">
+          <div class="sv-modal-title">Laporan Sesi</div>
+          <button class="sv-close-btn" onclick="closeSesiView()" title="Tutup">✕</button>
+        </div>
+        <div class="sv-modal-body" id="sesiViewBody"></div>
+      </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeSesiView(); });
+    document.body.appendChild(overlay);
+  }
+
+  document.getElementById('sesiViewBody').innerHTML = html;
+  // Isi nama proker
+  const nameEl = document.getElementById('svProkerName');
+  if (nameEl) nameEl.textContent = document.getElementById('navTitle')?.textContent || '';
+
+  overlay.classList.add('show');
+  document.body.style.overflow = 'hidden';
+
+  // Simpan idx di URL tanpa reload
+  const url = new URL(window.location.href);
+  url.searchParams.set('view', idx);
+  history.replaceState(null, '', url.toString());
+}
+
+function closeSesiView() {
+  const overlay = document.getElementById('sesiViewOverlay');
+  if (overlay) overlay.classList.remove('show');
+  document.body.style.overflow = '';
+
+  // Hapus ?view dari URL
+  const url = new URL(window.location.href);
+  url.searchParams.delete('view');
+  history.replaceState(null, '', url.toString());
+}
+
+function viewProkerSesi(idx) {
+  openSesiView(idx);
+}
+
+function copyLinkSesi(idx) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('view', idx);
+  navigator.clipboard.writeText(url.toString()).then(() => {
+    // Toast feedback
+    let toast = document.getElementById('svToast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'svToast';
+      toast.className = 'sv-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = '🔗 Link disalin!';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }).catch(() => {
+    // Fallback untuk browser lama
+    const el = document.createElement('textarea');
+    el.value = url.toString();
+    document.body.appendChild(el);
+    el.select(); document.execCommand('copy');
+    document.body.removeChild(el);
+  });
 }
 
 function toggleSesi(idx) {
@@ -1107,6 +1285,15 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
   // Render halaman — sheetsData null = tampil dengan data kosong + banner error
   renderPage(proker, sheetsData);
+
+  // Auto-open view jika URL mengandung ?view=idx
+  const _viewIdx = new URLSearchParams(window.location.search).get('view');
+  if (_viewIdx !== null && window._prokerSesiList) {
+    const _vi = parseInt(_viewIdx, 10);
+    if (!isNaN(_vi) && window._prokerSesiList[_vi]) {
+      setTimeout(() => openSesiView(_vi), 100);
+    }
+  }
 
   if (!sheetsData) {
     // Invalidate cache yang mungkin corrupt, agar retry fresh
