@@ -48,20 +48,13 @@ function makeRowId(sh, obj) {
 }
 
 const PK = {
-  '01':{n:'Pembelajaran Bahasa Jepang',i:'📚'},
-  '02':{n:'Bidang Akademik Bahasa Jepang',i:'🏫'},
-  '03':{n:'Proyek Minat & Bakat',i:'🎨'},
-  '04':{n:'Bidang Organisasi & Kekompakan',i:'🤝'},
-  '05':{n:'DIKLAT',i:'🎓'},
-  '06':{n:'DEMOS Ekskul',i:'📢'},
-  '07':{n:'JCOSASI Tanjoubi & Workshop',i:'🎉'},
-  '08':{n:'Pelantikan Anggota',i:'🏅'},
-  '09':{n:'Kolaborasi Class Meeting',i:'🤜'},
-  '10':{n:'Serah Terima Jabatan',i:'🔁'},
-  '11':{n:'Mengikuti Lomba',i:'🏆'},
-  '12':{n:'Konten Kreatif & Sosial Media',i:'📱'},
-  '13':{n:'Kintore Bersama',i:'💪'},
-  '14':{n:'Sharing Bersama Alumni',i:'🫂'},
+  '01':{n:'Pembelajaran Bhs. Jepang',i:'📚'},'02':{n:'Bidang Akademik',i:'🏫'},
+  '03':{n:'Proyek Minat & Bakat',i:'🎨'},'04':{n:'Rapat Bulanan',i:'🤝'},
+  '05':{n:'DIKLAT',i:'🔥'},'06':{n:'DEMOS/MPLS',i:'🌸'},
+  '07':{n:'JCOSASI Tanjoubi',i:'🎊'},'08':{n:'Pelantikan Anggota',i:'🎌'},
+  '09':{n:'Class Meeting',i:'🏆'},'10':{n:'Serah Terima Jabatan',i:'🙏'},
+  '11':{n:'Lomba & Kompetisi',i:'💪'},'12':{n:'Konten Sosial Media',i:'📱'},
+  '13':{n:'Kintore Bersama',i:'🏃'},'14':{n:'Sharing Alumni',i:'🎓'},
   '15':{n:'Kegiatan Lainnya',i:'📌'}
 };
 
@@ -366,14 +359,81 @@ function renderOv() {
   renderAG();
   setTimeout(initPhSakura, 0);
 
-  const bp = {};
-  S.dok.filter(d=>!d._d).forEach(d => { if(!bp[d.proker_id]) bp[d.proker_id]=[]; bp[d.proker_id].push(d); });
-  document.getElementById('rkCards').innerHTML = Object.entries(bp).map(([id,ss]) => {
+  const bpDok = {};
+  S.dok.filter(d=>!d._d).forEach(d => { if(!bpDok[d.proker_id]) bpDok[d.proker_id]=[]; bpDok[d.proker_id].push(d); });
+  const bpJad = {};
+  S.jad.filter(j=>!j._d).forEach(j => { if(!bpJad[j.proker_id]) bpJad[j.proker_id]=[]; bpJad[j.proker_id].push(j); });
+  const allPids = [...new Set([...Object.keys(bpDok), ...Object.keys(bpJad)])].sort();
+
+  document.getElementById('rkCards').innerHTML = allPids.length ? allPids.map(id => {
     const info = PK[id] || {n:'Proker '+id, i:'📌'};
-    const b = ss.reduce((a,d) => a + pBiaya(d.biaya_aktual), 0);
+    const ss   = bpDok[id] || [];
+    const jads = (bpJad[id] || []).sort((a,b)=>a.tanggal>b.tanggal?1:-1);
+    const b    = ss.reduce((a,d) => a + pBiaya(d.biaya_aktual), 0);
     const last = ss.map(s=>s.tanggal_sesi).sort().reverse()[0];
-    return `<div class="rk-card" onclick="filterGo('${id}')"><div class="rk-bd"><div class="rk-ic">${info.i}</div><div class="rk-nm">${info.n}</div><div class="rk-sub">#${id} · ${fDate(last)}</div><div class="rk-num">${ss.length}</div><div class="rk-nl">sesi</div><div style="margin-top:5px;font-size:.73rem;color:var(--gm)">Biaya: <strong style="color:var(--ch)">Rp ${b.toLocaleString('id')}</strong></div></div></div>`;
-  }).join('') || '<div class="empty"><div class="ei">📭</div><div class="et">Belum ada dokumentasi</div></div>';
+
+    const upcoming = jads.filter(j => j.tanggal >= S.today);
+    const pastJads  = jads.filter(j => j.tanggal < S.today);
+
+    let detailHtml = '';
+
+    if (jads.length) {
+      const upHtml = upcoming.length
+        ? upcoming.slice(0,3).map(j => {
+            const diffD = Math.ceil((new Date(j.tanggal+'T00:00:00') - new Date()) / 86400000);
+            const inLabel = diffD === 0 ? '<span class="rk-badge rk-badge-today">Hari ini</span>'
+                          : diffD === 1 ? '<span class="rk-badge rk-badge-soon">Besok</span>'
+                          : diffD <= 7  ? `<span class="rk-badge rk-badge-soon">${diffD} hari lagi</span>`
+                          : '';
+            const dokAda = (bpDok[id]||[]).some(d => d.tanggal_sesi === j.tanggal);
+            const dokBadge = dokAda ? '<span class="rk-badge rk-badge-dok">✅ Ada dok</span>' : '';
+            return `<div class="rk-jrow rk-jrow-up">
+              <div class="rk-jleft"><span class="rk-jdate">${fDate(j.tanggal)}</span>${j.jam?`<span class="rk-jtime">⏰ ${j.jam}</span>`:''}</div>
+              <div class="rk-jright">${inLabel}${dokBadge}${j.penanggung_jawab?`<span class="rk-jpj">👤 ${esc(j.penanggung_jawab)}</span>`:''}</div>
+            </div>`;
+          }).join('') + (upcoming.length > 3 ? `<div class="rk-more">+${upcoming.length-3} jadwal lagi</div>` : '')
+        : `<div class="rk-jempty">Tidak ada jadwal mendatang</div>`;
+      detailHtml += `<div class="rk-section"><div class="rk-sec-h">📅 Jadwal${upcoming.length?` <span class="rk-sec-cnt">${upcoming.length} upcoming</span>`:pastJads.length?` <span class="rk-sec-cnt rk-cnt-past">${pastJads.length} selesai</span>`:''}</div>${upHtml}</div>`;
+    } else {
+      detailHtml += `<div class="rk-section"><div class="rk-jempty rk-jempty-nd">Belum ada jadwal</div></div>`;
+    }
+
+    if (ss.length) {
+      const sorted = [...ss].sort((a,b)=>b.tanggal_sesi>a.tanggal_sesi?1:-1);
+      const dokHtml = sorted.slice(0,3).map(d => {
+        const peserta = spl(d.hadir_peserta);
+        const panitia = spl(d.hadir_panitia);
+        const ket     = d.keterangan || '(tanpa keterangan)';
+        const waktu   = (d.waktu_mulai||'') + (d.waktu_selesai ? '–'+d.waktu_selesai : '');
+        return `<div class="rk-drow">
+          <div class="rk-ddate">${fDate(d.tanggal_sesi)}${waktu?`<span class="rk-dtime">${waktu}</span>`:''}</div>
+          <div class="rk-dket">${esc(ket)}</div>
+          <div class="rk-dmeta">${peserta.length?`👥 ${peserta.length} peserta`:''}${panitia.length?` · 🛠️ ${panitia.length} panitia`:''}</div>
+        </div>`;
+      }).join('') + (ss.length > 3 ? `<div class="rk-more">+${ss.length-3} sesi lagi — <span class="rk-link" onclick="event.stopPropagation();filterGo('${id}')">Lihat semua →</span></div>` : '');
+      detailHtml += `<div class="rk-section"><div class="rk-sec-h">📋 Dokumentasi Sesi <span class="rk-sec-cnt">${ss.length} sesi</span></div>${dokHtml}</div>`;
+    }
+
+    const footHtml = `<div class="rk-foot">
+      <button class="btn-ar rk-act-btn" onclick="event.stopPropagation();filterGo('${id}')">📋 Lihat Sesi</button>
+      <button class="btn-ar rk-act-btn" onclick="event.stopPropagation();showPage('jadwal')">📅 Kelola Jadwal</button>
+    </div>`;
+
+    return `<div class="rk-card" id="rkc-${id}">
+      <div class="rk-bd" onclick="toggleRkCard('${id}')">
+        <div class="rk-ic">${info.i}</div>
+        <div class="rk-nm">${info.n}</div>
+        <div class="rk-sub">#${id}${last?' · '+fDate(last):''}</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
+          <div class="rk-num">${ss.length}</div><div class="rk-nl">sesi</div>
+          ${jads.length?`<span style="font-size:.65rem;color:var(--gm);margin-left:4px">· ${jads.length} jadwal</span>`:''}
+        </div>
+        ${b?`<div style="margin-top:4px;font-size:.73rem;color:var(--gm)">Biaya: <strong style="color:var(--ch)">Rp ${b.toLocaleString('id')}</strong></div>`:''}
+        <div class="rk-chev" id="rkchev-${id}">▾</div>
+      </div>
+      <div class="rk-detail" id="rkdet-${id}" style="display:none">${detailHtml}${footHtml}</div>
+    </div>`;
+  }).join('') : '<div class="empty"><div class="ei">📭</div><div class="et">Belum ada data proker</div></div>';
 }
 
 function getPend() {
@@ -460,7 +520,6 @@ function renderAG() {
 
 function aC(s) { return {actual:'#16A34A',pending:'#DC2626',today:'#9B59D4','today-planned':'#6B34AF',planned:'rgba(107,52,175,.5)',past:'#D4CFF0',future:'#EDEAF6'}[s]||'#EEE'; }
 function showTip(e, el) {
-  // Di mobile (touch), jangan tampilkan tooltip — pakai panel onclick
   if (window.matchMedia('(hover:none)').matches) return;
   const t = document.getElementById('actTip');
   t.style.cssText = `opacity:1;left:${e.clientX+12}px;top:${e.clientY-10}px;white-space:pre`;
@@ -470,20 +529,15 @@ function hideTip() { document.getElementById('actTip').style.opacity='0'; }
 
 function showActDayPanel(iso) {
   hideTip();
-  // Kumpulkan data hari ini
   const jadsHari = S.jad.filter(j => !j._d && j.tanggal === iso)
                         .sort((a,b) => (a.jam||'') > (b.jam||'') ? 1 : -1);
   const doksHari = S.dok.filter(d => !d._d && d.tanggal_sesi === iso);
-  const isPend   = jadsHari.some(j => !S.dok.find(d => !d._d && d.tanggal_sesi === j.tanggal));
-
-  // Tanggal header
   const tgl = fDate(iso);
   const isToday = iso === S.today;
   const isPast  = iso < S.today;
 
   let html = `<div class="adp-date">${tgl}${isToday ? ' <span class="adp-badge adp-today">Hari ini</span>' : ''}</div>`;
 
-  // ── JADWAL ──
   if (jadsHari.length) {
     html += `<div class="adp-sec">📅 Jadwal</div>`;
     html += jadsHari.map(j => {
@@ -509,7 +563,6 @@ function showActDayPanel(iso) {
     }).join('');
   }
 
-  // ── DOKUMENTASI ──
   if (doksHari.length) {
     html += `<div class="adp-sec">📋 Dokumentasi Sesi</div>`;
     html += doksHari.map(d => {
@@ -535,12 +588,10 @@ function showActDayPanel(iso) {
     }).join('');
   }
 
-  // Jika kosong total
   if (!jadsHari.length && !doksHari.length) {
     html += `<div class="adp-empty">Tidak ada kegiatan pada hari ini</div>`;
   }
 
-  // Footer aksi
   const footBtns = [];
   if (doksHari.length) {
     const pid = doksHari[0].proker_id;
@@ -552,7 +603,6 @@ function showActDayPanel(iso) {
   }
   if (footBtns.length) html += `<div class="adp-foot">${footBtns.join('')}</div>`;
 
-  // Tampilkan panel
   const panel = document.getElementById('actDayPanel');
   const overlay = document.getElementById('actDayOverlay');
   document.getElementById('actDayBody').innerHTML = html;
@@ -565,7 +615,6 @@ function closeActDayPanel() {
   const overlay = document.getElementById('actDayOverlay');
   panel.classList.remove('show');
   overlay.classList.remove('show');
-  // Bersihkan konten setelah animasi selesai (270ms)
   setTimeout(() => { document.getElementById('actDayBody').innerHTML = ''; }, 280);
 }
 function toISO(d) { return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
@@ -629,6 +678,14 @@ function renderDok() {
 
 function setFP(id) { S.fp=id; renderDok(); }
 function filterGo(id) { S.fp=id; showPage('dokumentasi'); }
+function toggleRkCard(id) {
+  const det  = document.getElementById('rkdet-' + id);
+  const chev = document.getElementById('rkchev-' + id);
+  if (!det) return;
+  const open = det.style.display !== 'none';
+  det.style.display  = open ? 'none' : '';
+  if (chev) chev.textContent = open ? '▾' : '▴';
+}
 function tgSc(i) { const el=document.getElementById('sc-'+i); if(el) el.classList.toggle('open'); }
 function delDok(i) {
   if(!confirm('Tandai untuk dihapus?')) return;
@@ -962,6 +1019,8 @@ function openNewJadwalModal(pid='01') {
   document.getElementById('ej_pid').innerHTML=pkOpts(pid);
   document.getElementById('ej_tgl').value=S.today;
   document.getElementById('ej_jam').value='14:00';
+  document.getElementById('ej_catatan').value='';
+  initPck('pj','');
   openModal('jadwalModal');
 }
 function openEditJad(i) {
@@ -972,9 +1031,8 @@ function openEditJad(i) {
   document.getElementById('ej_tgl').value=j.tanggal;
   document.getElementById('ej_jam').value=j.jam;
   const elCat = document.getElementById('ej_catatan');
-  const elPj  = document.getElementById('ej_pj');
   if(elCat) elCat.value = j.catatan||'';
-  if(elPj)  elPj.value  = j.penanggung_jawab||'';
+  initPck('pj', j.penanggung_jawab||'');
   openModal('jadwalModal');
 }
 function pasteJadwal(pid){
@@ -1007,13 +1065,12 @@ function pasteJadwal(pid){
 function saveJadwal() {
   const i  = document.getElementById('ej_idx').value;
   const elCat = document.getElementById('ej_catatan');
-  const elPj  = document.getElementById('ej_pj');
   const nd = {
     proker_id:        document.getElementById('ej_pid').value,
     tanggal:          document.getElementById('ej_tgl').value,
     jam:              document.getElementById('ej_jam').value,
     catatan:          elCat ? elCat.value.trim() : '',
-    penanggung_jawab: elPj  ? elPj.value.trim()  : '',
+    penanggung_jawab: getPckVal('pj'),
   };
   if(i==='new') {
     const ni = Date.now(); S.jad.push({...nd,_i:ni,_m:false,_n:true,_d:false});
@@ -1985,11 +2042,7 @@ function initPhSakura() {
   const ph = document.querySelector('.ph');
   if (!ph) return;
 
-  if (!ph.querySelector('.ph-sakura-wrap')) {
-    const marker = document.createElement('div');
-    marker.className = 'ph-sakura-wrap';
-    ph.insertBefore(marker, ph.firstChild);
-  }
+  const wrap = ph.querySelector('.ph-sakura-wrap') || ph;
 
   function spawnPhPetal() {
     if (!document.querySelector('#page-rekap.active')) return;
@@ -2022,9 +2075,11 @@ function initPhSakura() {
       'pointer-events:none',
       'z-index:0',
       'will-change:transform,opacity',
+      'transform:translateZ(0)',
+      'backface-visibility:hidden',
       'left:0', 'top:0',
     ].join(';');
-    ph.appendChild(el);
+    wrap.appendChild(el);
 
     function frame(ts) {
       const elapsed = ts - startTs;

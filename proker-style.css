@@ -66,6 +66,7 @@ img { max-width: 100%; display: block; }
   font-size: 1rem; font-weight: 700;
   color: var(--purple-deep);
   flex: 1;
+  min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pnav-num {
@@ -75,6 +76,7 @@ img { max-width: 100%; display: block; }
   padding: 3px 10px; border-radius: 99px;
   font-family: var(--font-body);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ── LAYOUT ── */
@@ -679,8 +681,39 @@ img { max-width: 100%; display: block; }
   .cd-box { min-width: 60px; padding: 12px 14px; }
   .cd-num { font-size: 1.6rem; }
   .activity-day { width: 11px; height: 11px; }
-  .pnav-inner { padding: 0 16px; gap: 10px; }
-  .pnav-title { font-size: .85rem; }
+  /* ── Navbar 2-baris di mobile ── */
+  :root { --nav-h: 52px; }
+  .pnav { height: auto; }
+  .pnav-inner {
+    padding: 0 12px;
+    gap: 0;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--nav-h);
+  }
+  /* Baris atas: back (kiri) + num (kanan) */
+  .pnav-back {
+    order: 1;
+    flex: 0 0 auto;
+    padding: 8px 10px;
+    font-size: .8rem;
+  }
+  .pnav-num {
+    order: 2;
+    margin-left: auto;
+    margin-right: 0;
+  }
+  /* Baris bawah: title full-width */
+  .pnav-title {
+    order: 3;
+    flex: 0 0 100%;
+    font-size: .78rem;
+    padding: 0 2px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pcontainer { padding: calc(var(--nav-h) + 36px) 16px 60px; }
   /* Dokumentasi mobile */
   .dok-summary { padding: 16px; gap: 12px; }
   .dsum-val { font-size: 1rem; }
