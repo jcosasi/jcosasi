@@ -761,98 +761,111 @@ function printProkerSesi(idx) {
 }
 
 /* ══════════════════════════════════════════════
-   VIEW LAPORAN SESI — tanpa tanda tangan
+   VIEW LAPORAN SESI — identik laporan, tanpa TTD
 ══════════════════════════════════════════════ */
 function buildSesiViewHtml(idx) {
-  const s = window._prokerSesiList && window._prokerSesiList[idx];
-  if (!s) return '';
-  const d = s.rows[0];
-  const { fotos, biayaRows } = parseDokRow(d);
+  const sesiList = window._prokerSesiList;
+  if (!sesiList || !sesiList[idx]) return '';
+  const sesi   = sesiList[idx];
+  const d      = sesi.rows ? sesi.rows[0] : sesi;
+  const proker = (typeof getProkerByNum === 'function')
+    ? getProkerByNum(sesi.proker_id || d.proker_id)
+    : (CONTENT?.proker?.items||[]).find(p => p.num === (sesi.proker_id||d.proker_id));
+  const org    = CONTENT?.org || {};
 
-  const tglStr = d.tanggal_sesi ? formatTglPanjang(d.tanggal_sesi) : '–';
-  const jamStr = (d.waktu_mulai && d.waktu_selesai)
-    ? `${d.waktu_mulai} – ${d.waktu_selesai}`
-    : d.waktu_mulai || '';
-  const dur    = hitungDurasi(d.waktu_mulai, d.waktu_selesai);
-  const ket    = d.keterangan || '';
+  const tglSesi = formatTglPanjang(sesi.tanggal_sesi || d.tanggal_sesi);
+  const dur     = hitungDurasi(d.waktu_mulai, d.waktu_selesai);
+  const jamStr  = d.waktu_mulai
+    ? d.waktu_mulai + (d.waktu_selesai ? ' – ' + d.waktu_selesai : '') + (dur ? ' (' + dur + ')' : '')
+    : '–';
 
-  // Helper hadir
-  function hadirBlok(kolom, label, ikon) {
-    const raw = d[kolom]; if (!raw) return '';
-    const names = raw.split(',').map(n => n.trim()).filter(Boolean);
-    const listHtml = names.length === 1
-      ? `<span class="sv-name-single">${names[0]}</span>`
-      : `<ul class="sv-name-list">${names.map(n => `<li>${n}</li>`).join('')}</ul>`;
-    return `<div class="sv-hadir-blok">
-      <div class="sv-hadir-label">${ikon} ${label} <span class="sv-hadir-n">(${names.length})</span></div>
-      ${listHtml}
+  // Daftar hadir flat
+  const hadirRows = [];
+  const parseNama = (str, peran) =>
+    (str||'').split(',').map(n=>n.trim()).filter(Boolean).map(nama=>({nama,peran}));
+  parseNama(d.hadir_peserta,    'Peserta').forEach(r=>hadirRows.push(r));
+  parseNama(d.hadir_panitia,    'Panitia').forEach(r=>hadirRows.push(r));
+  parseNama(d.hadir_narasumber, 'Narasumber').forEach(r=>hadirRows.push(r));
+
+  const { fotos: fotosArr, biayaRows: biayaItems } = parseDokRow(d);
+  const totalBiaya = biayaItems.reduce((s,r)=>s+rupiahNum(r.biaya_aktual),0);
+  const totalEst   = biayaItems.reduce((s,r)=>s+rupiahNum(r.estimasi_biaya_item),0);
+
+  // Nomor sesi
+  const sesiProkerSama = sesiList
+    .filter(s=>(s.proker_id||s.rows?.[0]?.proker_id)===(sesi.proker_id||d.proker_id))
+    .sort((a,b)=>((a.tanggal_sesi||a.rows?.[0]?.tanggal_sesi)>(b.tanggal_sesi||b.rows?.[0]?.tanggal_sesi)?1:-1));
+  const nomorSesi = sesiProkerSama.findIndex(s=>(s.tanggal_sesi||s.rows?.[0]?.tanggal_sesi)===(sesi.tanggal_sesi||d.tanggal_sesi))+1;
+
+  // Foto layout (maks 5, identik printLaporanSesi)
+  const fotosCapped = fotosArr.slice(0,5);
+  const n = fotosCapped.length;
+  let fotoRows = [];
+  if (n===1) { fotoRows=[[{src:convertGDriveUrl(fotosCapped[0]),url:fotosCapped[0],h:'180px'}]]; }
+  else if(n===2){ fotoRows=[[{src:convertGDriveUrl(fotosCapped[0]),url:fotosCapped[0],h:'150px'},{src:convertGDriveUrl(fotosCapped[1]),url:fotosCapped[1],h:'150px'}]]; }
+  else if(n===3){ fotoRows=[[{src:convertGDriveUrl(fotosCapped[0]),url:fotosCapped[0],h:'155px'}],[{src:convertGDriveUrl(fotosCapped[1]),url:fotosCapped[1],h:'120px'},{src:convertGDriveUrl(fotosCapped[2]),url:fotosCapped[2],h:'120px'}]]; }
+  else if(n===4){ fotoRows=[[{src:convertGDriveUrl(fotosCapped[0]),url:fotosCapped[0],h:'130px'},{src:convertGDriveUrl(fotosCapped[1]),url:fotosCapped[1],h:'130px'}],[{src:convertGDriveUrl(fotosCapped[2]),url:fotosCapped[2],h:'130px'},{src:convertGDriveUrl(fotosCapped[3]),url:fotosCapped[3],h:'130px'}]]; }
+  else { fotoRows=[[{src:convertGDriveUrl(fotosCapped[0]),url:fotosCapped[0],h:'150px'}],[{src:convertGDriveUrl(fotosCapped[1]),url:fotosCapped[1],h:'115px'},{src:convertGDriveUrl(fotosCapped[2]),url:fotosCapped[2],h:'115px'}],[{src:convertGDriveUrl(fotosCapped[3]),url:fotosCapped[3],h:'115px'},{src:convertGDriveUrl(fotosCapped[4]),url:fotosCapped[4],h:'115px'}]]; }
+
+  // HTML sections — identik laporan cetak
+  const infoGrid = `
+    <div class="sv-info-grid">
+      <div class="sv-info-row"><span class="sv-info-label">Program Kerja</span><span class="sv-info-val">${proker?'#'+(sesi.proker_id||d.proker_id)+' '+proker.judul.replace(/&amp;/g,'&'):(sesi.proker_id||d.proker_id)}</span></div>
+      <div class="sv-info-row"><span class="sv-info-label">Nomor Sesi</span><span class="sv-info-val">Sesi ke-${nomorSesi} dari ${sesiProkerSama.length} sesi</span></div>
+      <div class="sv-info-row"><span class="sv-info-label">Tanggal</span><span class="sv-info-val">${tglSesi}</span></div>
+      <div class="sv-info-row"><span class="sv-info-label">Waktu</span><span class="sv-info-val">${jamStr}</span></div>
+      <div class="sv-info-row"><span class="sv-info-label">Jumlah Hadir</span><span class="sv-info-val">${hadirRows.length>0?hadirRows.length+' orang':'–'}</span></div>
+      ${d.lokasi?`<div class="sv-info-row"><span class="sv-info-label">Lokasi</span><span class="sv-info-val">${d.lokasi}</span></div>`:''}
+      ${totalBiaya>0?`<div class="sv-info-row"><span class="sv-info-label">Total Biaya</span><span class="sv-info-val">${rupiah(totalBiaya)}</span></div>`:''}
     </div>`;
-  }
 
-  const hadirParts = [
-    hadirBlok('hadir_peserta',    'Peserta',    '👥'),
-    hadirBlok('hadir_panitia',    'Panitia',    '🤝'),
-    hadirBlok('hadir_narasumber', 'Narasumber', '🎤'),
-  ].filter(Boolean);
+  const ketBox    = d.keterangan ? `<div class="sv-text-box"><div class="sv-text-label">Keterangan Kegiatan</div>${d.keterangan}</div>` : '';
+  const materiBox = d.materi     ? `<div class="sv-text-box"><div class="sv-text-label">Materi &amp; Progress</div>${d.materi}</div>` : '';
+  const kendalaBox= d.kendala    ? `<div class="sv-text-box" style="border-color:#FECACA;background:#FFF5F5"><div class="sv-text-label" style="color:#B91C1C">Kendala &amp; Evaluasi</div>${d.kendala}</div>` : '';
 
-  let totBiaya = 0, totEst = 0;
-  biayaRows.forEach(i => { totBiaya += rupiahNum(i.biaya_aktual); totEst += rupiahNum(i.estimasi_biaya_item); });
+  const hadirTable = hadirRows.length ? `
+    <div class="sv-sec-title">✅ Daftar Hadir</div>
+    <table class="sv-tbl">
+      <thead><tr><th style="width:36px">No</th><th>Nama</th><th style="width:110px">Peran</th></tr></thead>
+      <tbody>${hadirRows.map((r,i)=>`<tr><td class="sv-num-col">${i+1}</td><td>${r.nama}</td><td><span class="sv-badge sv-badge-${r.peran.toLowerCase()}">${r.peran}</span></td></tr>`).join('')}</tbody>
+    </table>` : '';
 
-  const fotoSection = fotos.length ? `
-    <div class="sv-section">
-      <div class="sv-sec-label">📷 Foto Kegiatan</div>
-      <div class="sv-foto-grid">${fotos.map(url => {
-        const src = convertGDriveUrl(url);
-        return `<a href="${url}" target="_blank" rel="noopener" class="sv-foto-wrap">
-          <img src="${src}" alt="Foto kegiatan" loading="lazy"
-               onerror="this.closest('.sv-foto-wrap').innerHTML='<div class=\'sv-foto-err\'>🖼️</div>'"/>
-        </a>`;
-      }).join('')}</div>
-    </div>` : '';
+  const biayaTable = biayaItems.length ? `
+    <div class="sv-sec-title">💰 Rincian Biaya</div>
+    <table class="sv-tbl">
+      <thead><tr><th>Item</th><th class="sv-num-col" style="width:110px">Estimasi</th><th class="sv-num-col" style="width:110px">Aktual</th></tr></thead>
+      <tbody>
+        ${biayaItems.map(r=>`<tr><td>${r.item_biaya||'–'}</td><td class="sv-num-col">${r.estimasi_biaya_item?rupiah(rupiahNum(r.estimasi_biaya_item)):'–'}</td><td class="sv-num-col">${r.biaya_aktual?rupiah(rupiahNum(r.biaya_aktual)):'–'}</td></tr>`).join('')}
+        <tr class="sv-total-row"><td>Total</td><td class="sv-num-col">${totalEst?rupiah(totalEst):'–'}</td><td class="sv-num-col">${rupiah(totalBiaya)||'–'}</td></tr>
+      </tbody>
+    </table>` : '';
 
-  const hadirSection = hadirParts.length ? `
-    <div class="sv-section">
-      <div class="sv-sec-label">✅ Daftar Hadir</div>
-      <div class="sv-hadir-grid">${hadirParts.join('')}</div>
-    </div>` : '';
-
-  const materiSection = (d.materi || d.progress) ? `
-    <div class="sv-section">
-      <div class="sv-sec-label">📖 Materi &amp; Progress</div>
-      <div class="sv-text">${d.materi || d.progress}</div>
-    </div>` : '';
-
-  const biayaSection = biayaRows.length ? `
-    <div class="sv-section">
-      <div class="sv-sec-label">💰 Biaya Kegiatan</div>
-      <table class="sv-table">
-        <thead><tr><th>Item</th><th>Estimasi</th><th>Aktual</th></tr></thead>
-        <tbody>${biayaRows.map(i => {
-          const est = rupiahNum(i.estimasi_biaya_item), akt = rupiahNum(i.biaya_aktual);
-          return `<tr>
-            <td>${i.item_biaya || '–'}</td>
-            <td class="sv-num">${est ? rupiah(est) : '–'}</td>
-            <td class="sv-num">${akt ? rupiah(akt) : '–'}</td>
-          </tr>`;
-        }).join('')}</tbody>
-        <tfoot><tr class="sv-total"><td>Total</td><td>${totEst ? rupiah(totEst) : '–'}</td><td>${rupiah(totBiaya) || '–'}</td></tr></tfoot>
-      </table>
-    </div>` : '';
-
-  const kendalaSection = d.kendala ? `
-    <div class="sv-section">
-      <div class="sv-sec-label">⚠️ Kendala &amp; Evaluasi</div>
-      <div class="sv-text sv-kendala">${d.kendala}</div>
+  const fotoSection = fotosCapped.length ? `
+    <div class="sv-sec-title">📷 Foto Kegiatan${fotosArr.length>5?' (menampilkan 5 dari '+fotosArr.length+')':''}</div>
+    <div class="sv-foto-section">${fotoRows.map(row=>`
+      <div class="sv-foto-row">${row.map(img=>`
+        <a href="${img.url}" target="_blank" rel="noopener" class="sv-foto-cell" style="--fh:${img.h}">
+          <img src="${img.src}" alt="Foto kegiatan" loading="lazy"
+               onerror="this.closest('.sv-foto-cell').style.display='none'"/>
+        </a>`).join('')}
+      </div>`).join('')}
     </div>` : '';
 
   return `
-    <div class="sv-header">
-      <div class="sv-proker-name" id="svProkerName"></div>
-      <div class="sv-tgl">${tglStr}</div>
-      ${jamStr ? `<div class="sv-jam">⏰ ${jamStr}${dur ? ` · ${dur}` : ''}</div>` : ''}
-      ${ket ? `<div class="sv-ket">${ket}</div>` : ''}
+    <!-- KOP -->
+    <div class="sv-kop">
+      <div class="sv-kop-logo">
+        <img src="logo-jcosasi.png" alt="J" onerror="this.style.display='none';this.parentElement.textContent='${proker?proker.icon:'📌'}'"/>
+      </div>
+      <div class="sv-kop-text">
+        <div class="sv-kop-org">${org.nama_lengkap||'JCOSASI'}</div>
+        <div class="sv-kop-sub">${org.sekolah||'SMKN 1 Cikarang Barat'} · ${org.angkatan_aktif||'Angkatan 12'} · Periode 2026–2027</div>
+      </div>
     </div>
-    ${fotoSection}${hadirSection}${materiSection}${biayaSection}${kendalaSection}
+    <div class="sv-lap-title">Laporan Kegiatan</div>
+    <div class="sv-lap-sub">${proker?proker.judul.replace(/&amp;/g,'&'):'Program Kerja'} · Sesi ke-${nomorSesi}</div>
+    <hr class="sv-divider"/>
+    ${infoGrid}${ketBox}${materiBox}${kendalaBox}${hadirTable}${biayaTable}${fotoSection}
   `;
 }
 
@@ -885,6 +898,7 @@ function openSesiView(idx) {
 
   overlay.classList.add('show');
   document.body.style.overflow = 'hidden';
+  plovHide();
 
   // Simpan idx di URL tanpa reload
   const url = new URL(window.location.href);
@@ -930,6 +944,82 @@ function copyLinkSesi(idx) {
     el.select(); document.execCommand('copy');
     document.body.removeChild(el);
   });
+}
+
+/* ══════════════════════════════════════════════
+   PLOV — Loading overlay sakura
+══════════════════════════════════════════════ */
+function plovShow(msg) {
+  const el = document.getElementById('plov');
+  if (!el) return;
+  const st = document.getElementById('plovStatus');
+  if (st && msg) st.textContent = msg;
+  el.classList.remove('hidden');
+  plovStartSakura();
+}
+
+function plovHide() {
+  const el = document.getElementById('plov');
+  if (!el) return;
+  el.classList.add('hidden');
+}
+
+function plovSetStatus(msg) {
+  const st = document.getElementById('plovStatus');
+  if (st) st.textContent = msg;
+}
+
+function plovStartSakura() {
+  const container = document.getElementById('plovSakura');
+  if (!container || container._plovInit) return;
+  container._plovInit = true;
+
+  function spawnPetal() {
+    const plov = document.getElementById('plov');
+    if (!plov || plov.classList.contains('hidden')) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const sz = 4 + Math.random() * 6;
+    let x = Math.random() * (W + 40) - 20, y = -sz, angle = Math.random() * 360;
+    const dur = 4500 + Math.random() * 3500;
+    const xDrift = (Math.random() > .5 ? 1 : -1) * (14 + Math.random() * 20);
+    const vyMin = 40 + Math.random() * 20, vyMax = 130 + Math.random() * 60;
+    const totalSpin = (360 + Math.random() * 180) * (Math.random() > .5 ? 1 : -1);
+    const alpha = .2 + Math.random() * .35;
+    const radius = Math.random() > .5 ? '50% 0 50% 0' : '0 50% 0 50%';
+    const startTs = performance.now(); let lastTs = startTs;
+    const el = document.createElement('div');
+    el.style.cssText = ['position:absolute','width:'+sz+'px','height:'+sz+'px',
+      'background:rgba(255,180,210,'+alpha+')','border-radius:'+radius,
+      'pointer-events:none','z-index:1','will-change:transform,opacity','left:0','top:0'].join(';');
+    container.appendChild(el);
+    function frame(ts) {
+      const elapsed = ts - startTs, dt = Math.min((ts - lastTs) / 1000, .05); lastTs = ts;
+      const plov2 = document.getElementById('plov');
+      if (!plov2 || plov2.classList.contains('hidden') || elapsed > dur || y > H + sz + 10) { el.remove(); return; }
+      const p = Math.min(elapsed / dur, 1);
+      const vx = xDrift * Math.cos(p * Math.PI * 2) * (Math.PI * 2 / (dur / 1000));
+      const ease = p * p * (3 - 2 * p);
+      const vy = vyMin + (vyMax - vyMin) * ease - 18 * Math.abs(Math.sin(p * Math.PI * 2));
+      x += vx * dt; y += Math.max(8, vy) * dt;
+      const curSpin = (totalSpin / (dur / 1000)) * (0.7 + 0.3 * Math.abs(Math.cos(p * Math.PI)));
+      angle += curSpin * dt;
+      let opacity;
+      if (elapsed < 400) opacity = elapsed / 400;
+      else if (p > 0.8)  opacity = Math.max(0, (1 - p) / 0.2);
+      else               opacity = 1;
+      el.style.opacity = opacity;
+      el.style.transform = 'translate('+(x-sz/2)+'px,'+(y-sz/2)+'px) rotate('+angle+'deg)';
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  for (let i = 0; i < 10; i++) setTimeout(spawnPetal, i * 180);
+  const iv = setInterval(() => {
+    const plov = document.getElementById('plov');
+    if (!plov || plov.classList.contains('hidden')) { clearInterval(iv); container._plovInit = false; return; }
+    spawnPetal();
+  }, 700);
 }
 
 function toggleSesi(idx) {
@@ -1256,6 +1346,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   const id     = getProkerIdFromURL();
   const proker = getProkerData(id);
 
+  // Jika ada ?view=, tampilkan plov selama data dimuat
+  const _hasView = new URLSearchParams(window.location.search).get('view') !== null;
+  if (_hasView) { plovShow('Memuat data proker…'); }
+
   if(!proker){
     $('mainContent').innerHTML=`<div class="page-error">
       <div class="pe-icon">🔍</div>
@@ -1284,6 +1378,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   }
 
   // Render halaman — sheetsData null = tampil dengan data kosong + banner error
+  if (_hasView) plovSetStatus('Menyiapkan tampilan…');
   renderPage(proker, sheetsData);
 
   // Auto-open view jika URL mengandung ?view=idx
@@ -1292,6 +1387,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     const _vi = parseInt(_viewIdx, 10);
     if (!isNaN(_vi) && window._prokerSesiList[_vi]) {
       setTimeout(() => openSesiView(_vi), 100);
+    } else {
+      plovHide();
     }
   }
 

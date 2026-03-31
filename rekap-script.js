@@ -31,6 +31,10 @@ async function initRekap() {
   if (_navTitle) _navTitle.textContent = 'Rekap Keseluruhan';
   if (_navNum)   _navNum.textContent   = '📊';
 
+  // Tampilkan plov jika direct link ke view
+  const _hasViewRekap = new URLSearchParams(window.location.search).get('view') !== null;
+  if (_hasViewRekap) plovShow('Memuat data rekap…');
+
   // Skeleton dulu
   main.innerHTML = renderRekapSkeleton();
 
@@ -47,7 +51,19 @@ async function initRekap() {
     console.warn('[JCOSASI Rekap]', e);
   }
 
+  if (_hasViewRekap) plovSetStatus('Menyiapkan tampilan…');
   renderRekap(allData);
+
+  // Auto-open view jika URL mengandung ?view=idx
+  const _viewIdx = new URLSearchParams(window.location.search).get('view');
+  if (_viewIdx !== null && window._rekapSesiList) {
+    const _vi = parseInt(_viewIdx, 10);
+    if (!isNaN(_vi) && window._rekapSesiList[_vi]) {
+      setTimeout(() => viewRekapSesi(_vi), 100);
+    } else {
+      plovHide();
+    }
+  }
 
   if (!allData) {
     cacheInvalidate();
@@ -478,6 +494,12 @@ function renderRekapDok(items, dokArr) {
           <button class="dsh-print-btn" title="Cetak laporan sesi ini"
             onclick="event.stopPropagation(); printLaporanSesi(${JSON.stringify(idx)})"
           >🖨️</button>
+          <button class="dsh-view-btn" title="Lihat laporan sesi"
+            onclick="event.stopPropagation(); viewRekapSesi(${idx})"
+          >👁️</button>
+          <button class="dsh-link-btn" title="Salin link laporan sesi"
+            onclick="event.stopPropagation(); copyLinkRekapSesi(${idx})"
+          >🔗</button>
           <span class="dsh-toggle" id="${rkTi}">▾</span>
         </div>
       </div>
@@ -1030,6 +1052,41 @@ function doActualPrint() {
 /* ══════════════════════════════════════════════
    CETAK LAPORAN SATU SESI — dari halaman rekap
 ══════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════
+   VIEW & COPY LINK — halaman rekap
+══════════════════════════════════════════════ */
+function viewRekapSesi(idx) {
+  // Salin _rekapSesiList ke _prokerSesiList agar buildSesiViewHtml bisa akses
+  if (!window._rekapSesiList || !window._rekapSesiList[idx]) return;
+  window._prokerSesiList = window._rekapSesiList;
+  if (typeof openSesiView === 'function') openSesiView(idx);
+}
+
+function copyLinkRekapSesi(idx) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('view', idx);
+  // Pastikan page=rekap ada di URL
+  if (!url.searchParams.get('page')) url.searchParams.set('page', 'rekap');
+  navigator.clipboard.writeText(url.toString()).then(() => {
+    let toast = document.getElementById('svToast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'svToast';
+      toast.className = 'sv-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = '🔗 Link disalin!';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }).catch(() => {
+    const el = document.createElement('textarea');
+    el.value = url.toString();
+    document.body.appendChild(el);
+    el.select(); document.execCommand('copy');
+    document.body.removeChild(el);
+  });
+}
+
 function printLaporanSesi(idx) {
   const sesiList = window._rekapSesiList;
   if (!sesiList || !sesiList[idx]) return;

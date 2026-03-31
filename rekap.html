@@ -37,6 +37,26 @@
   <!-- TOOLTIP -->
   <div class="day-tooltip" id="dayTooltip" style="opacity:0;"></div>
 
+  <!-- PLOV: Loading overlay sakura untuk direct link view/cetak -->
+  <div class="plov hidden" id="plov">
+    <div class="plov-bg"></div>
+    <div class="plov-grid"></div>
+    <div class="plov-sakura-static"></div>
+    <div class="plov-sakura" id="plovSakura"></div>
+    <div class="plov-circle-1"></div>
+    <div class="plov-circle-2"></div>
+    <div class="plov-content">
+      <div class="plov-logo">
+        <img src="logo-jcosasi.png" alt="JCOSASI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
+        <span class="plov-logo-fallback" style="display:none">🎌</span>
+      </div>
+      <div class="plov-title">JCOSASI</div>
+      <div class="plov-subtitle">Memuat laporan…</div>
+      <div class="plov-bar-wrap"><div class="plov-bar"></div></div>
+      <div class="plov-status" id="plovStatus">Mengambil data…</div>
+    </div>
+  </div>
+
   <script src="proker-script.js"></script>
   <script src="rekap-script.js"></script>
 </body>
