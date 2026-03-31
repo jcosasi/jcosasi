@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MailBlast — Email Sender Otomatis</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style_mail_blast.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <!-- Layer dekorasi identik .lov -->
+  <div class="login-dots"></div>
+  <div class="login-circle-1"></div>
+  <div class="login-circle-2"></div>
+  <div class="login-sakura" id="loginSakura"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">✉️</div>
+      <div class="login-logo-text">Mail<span>Blast</span></div>
+    </div>
+    <div class="login-title">Verifikasi Akses</div>
+    <div class="login-sub">Masukkan token akses yang diberikan administrator untuk melanjutkan.</div>
+    <div class="login-field">
+      <label class="login-label">Token Akses</label>
+      <div class="token-wrap">
+        <input type="password" id="tokenInp" class="token-input"
+          placeholder="••••••••••••••••"
+          autocomplete="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter')doLogin()" />
+        <button class="eye-btn" onclick="toggleEye()" id="eyeBtn">👁</button>
+      </div>
+      <div class="login-err" id="loginErr"><span>✕</span><span id="loginErrMsg">Token salah.</span></div>
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">
+      <div class="spinner" id="spinner"></div>
+      <span id="loginBtnTxt">Verifikasi &amp; Masuk</span>
+    </button>
+    <div class="login-footer">Email Sender via Google Apps Script &amp; Gmail.<br>Hubungi administrator jika belum punya token.</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen">
+  <header>
+    <div class="logo"><div class="logo-icon">✉️</div>Mail<span>Blast</span></div>
+    <div class="hdr-right">
+      <div class="badge-ok">Terhubung</div>
+      <div class="badge">v1.0</div>
+      <button class="btn btn-g btn-sm" onclick="doLogout()">Keluar</button>
+    </div>
+  </header>
+
+  <div class="app-layout">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-hdr">Dataset <button class="ico-btn" onclick="showAddDs()" title="Tambah">＋</button></div>
+      <div class="ds-list" id="dsList"></div>
+      <div class="sidebar-foot">
+        <button class="btn btn-g btn-sm btn-fw" onclick="exportCSV()">⬇ Export CSV</button>
+        <button class="btn btn-g btn-sm btn-fw" onclick="document.getElementById('csvFile').click()">⬆ Import CSV</button>
+        <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCSV(event)">
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="main-panel">
+      <div class="panel-hdr">
+        <div class="panel-title" id="tblTitle">Pilih Dataset</div>
+        <div class="panel-acts">
+          <button class="btn btn-g btn-sm" onclick="resetStatus()">↺ Reset</button>
+          <button class="btn btn-g btn-sm" onclick="showColManager()" id="colMgrBtn" disabled>⚙ Kolom</button>
+          <button class="btn btn-g btn-sm" onclick="addRow()">＋ Baris</button>
+          <button class="btn btn-p btn-sm" onclick="showPreview()">👁 Preview</button>
+          <button class="btn btn-s" id="sendBtn" onclick="showConfirm()" disabled>▶ Kirim Email</button>
+        </div>
+      </div>
+      <div class="tbl-wrap" id="tblWrap">
+        <div class="empty">
+          <div class="empty-ico">📂</div>
+          <div class="empty-t">Belum ada dataset</div>
+          <div class="empty-d">Buat dataset baru dari sidebar untuk mulai kirim email.</div>
+          <button class="btn btn-p btn-sm" onclick="showAddDs()">＋ Buat Dataset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="tab('tpl')">Template</button>
+        <button class="tab-btn" onclick="tab('stats')">Statistik</button>
+        <button class="tab-btn" onclick="tab('cfg')">Konfigurasi</button>
+      </div>
+
+      <!-- TEMPLATE TAB -->
+      <div class="tab-pane active" id="tab-tpl">
+        <div class="tpl-area">
+
+          <!-- Dataset indicator -->
+          <div class="ds-tpl-indicator" id="dsTplIndicator">
+            <span class="ds-tpl-label">✏️ Template aktif:</span>
+            <span class="ds-tpl-name" id="dsTplName">— pilih dataset —</span>
+          </div>
+
+          <!-- Subject -->
+          <div>
+            <div class="fl">Subjek Email</div>
+            <input type="text" class="subj-inp" id="subj"
+              placeholder="Masukkan subjek email..."
+              oninput="saveTpl()">
+          </div>
+
+          <!-- Body -->
+          <div>
+            <div class="fl">Isi Email</div>
+            <textarea id="body"
+              placeholder="Tulis isi email di sini...&#10;&#10;Gunakan {{nama_kolom}} untuk data dinamis&#10;Gunakan {{link_0}} untuk link yang sudah ditambahkan"
+              oninput="saveTpl()"></textarea>
+          </div>
+
+          <!-- Column placeholders -->
+          <div>
+            <div class="fl">Placeholder Kolom</div>
+            <div class="chips" id="chipArea">
+              <span style="font-size:11px;color:var(--text-muted)">Pilih dataset untuk melihat placeholder.</span>
+            </div>
+          </div>
+
+          <!-- Link builder — no wrapper box, flows naturally in tpl-area scroll -->
+          <div class="link-header">
+            <div class="fl" style="margin-bottom:0">Link di Email</div>
+            <button class="btn btn-g btn-sm" onclick="addLink()">＋ Tambah Link</button>
+          </div>
+          <div id="linkListArea">
+            <span style="font-size:11px;color:var(--text-muted)">Pilih dataset terlebih dahulu.</span>
+          </div>
+
+          <div class="ib" style="font-size:11px">
+            <strong>Tips:</strong>
+            Klik chip kolom atau tombol <em>⬆ Sisipkan</em> di link untuk memasukkan placeholder ke posisi kursor.
+          </div>
+
+        </div>
+      </div>
+
+      <!-- STATS TAB -->
+      <div class="tab-pane" id="tab-stats">
+        <div class="stats-area">
+          <div class="stat-cards">
+            <div class="stat-card"><div class="stat-v" id="sTotal">0</div><div class="stat-l">Total</div></div>
+            <div class="stat-card"><div class="stat-v" id="sSent" style="color:var(--success)">0</div><div class="stat-l">Terkirim</div></div>
+            <div class="stat-card"><div class="stat-v" id="sFail" style="color:var(--danger)">0</div><div class="stat-l">Gagal</div></div>
+            <div class="stat-card"><div class="stat-v" id="sPend" style="color:var(--text-muted)">0</div><div class="stat-l">Pending</div></div>
+          </div>
+          <div class="prog-box">
+            <div class="prog-hdr"><span>Progress</span><span class="prog-pct" id="pPct">0%</span></div>
+            <div class="prog-track"><div class="prog-fill" id="pFill"></div></div>
+            <div style="font-size:11px;color:var(--text-muted)" id="pStat">Belum dimulai</div>
+          </div>
+          <div>
+            <div class="fl" style="margin-bottom:8px">Log</div>
+            <div class="log" id="logArea"><div class="ll"><span class="lm info">Sistem siap.</span></div></div>
+          </div>
+          <button class="btn btn-g btn-sm btn-fw" onclick="clearLog()">🗑 Hapus Log</button>
+        </div>
+      </div>
+
+      <!-- CONFIG TAB -->
+      <div class="tab-pane" id="tab-cfg">
+        <div class="cfg-area">
+          <div class="ib">✅ URL Apps Script terkonfigurasi secara internal. Token sudah terverifikasi.</div>
+          <div class="ig">
+            <div class="fl">Delay Antar Email</div>
+            <select class="ci" id="delay" onchange="saveCfg()">
+              <option value="1">1 detik</option>
+              <option value="2" selected>2 detik (Rekomendasi)</option>
+              <option value="3">3 detik</option>
+              <option value="5">5 detik (Aman)</option>
+              <option value="10">10 detik (Sangat Aman)</option>
+            </select>
+          </div>
+          <div class="ig">
+            <div class="fl">Lewati yang Sudah Terkirim</div>
+            <select class="ci" id="skipSent" onchange="saveCfg()">
+              <option value="true" selected>Ya (Lewati status Terkirim)</option>
+              <option value="false">Tidak (Kirim ulang semua)</option>
+            </select>
+          </div>
+          <div class="wb">⚠️ Batas Gmail pribadi: <strong>±100 email/hari</strong>. Gunakan delay minimal 2 detik.</div>
+          <div>
+            <div class="fl" style="margin-bottom:6px">Kode Google Apps Script</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Deploy kode ini di <strong>script.google.com</strong> sebagai Web App</div>
+            <div class="code-box" id="gasCode">// ─────────────────────────────────────────────
+// MailBlast — Google Apps Script
+//
+// Deploy sebagai Web App:
+//   Execute as: Me
+//   Who has access: Anyone
+//
+// PENTING: Gunakan doGet() bukan doPost()
+// ─────────────────────────────────────────────
+
+var VALID_TOKEN = "GANTI_TOKEN_KAMU_DI_SINI";
+
+function doGet(e) {
+  try {
+    var token   = e.parameter.token;
+    var action  = e.parameter.action;
+    var to      = e.parameter.to;
+    var subject = e.parameter.subject;
+    var body    = e.parameter.body;
+
+    if (token !== VALID_TOKEN) {
+      return respond("error", "Token tidak valid");
+    }
+    if (action === "verify") {
+      return respond("success", "Token valid");
+    }
+    if (action === "send") {
+      if (!to || !subject || !body) {
+        return respond("error", "Data tidak lengkap");
+      }
+      // Kirim sebagai HTML agar link bisa diklik
+      GmailApp.sendEmail(to, subject, "", {
+        htmlBody: body.replace(/\n/g, "<br>")
+      });
+      return respond("success", "Terkirim ke " + to);
+    }
+    return respond("error", "Action tidak dikenali");
+  } catch(err) {
+    return respond("error", err.toString());
+  }
+}
+
+function respond(status, message) {
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      status: status,
+      message: message
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
+}</div>
+          </div>
+          <button class="btn btn-g btn-sm btn-fw" onclick="copyGas()">📋 Salin Kode GAS</button>
+        </div>
+      </div>
+
+    </div><!-- /right-panel -->
+  </div><!-- /app-layout -->
+</div><!-- /appScreen -->
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Add Dataset -->
+<div class="mo" id="mAddDs">
+  <div class="mc">
+    <div class="mt">Dataset Baru</div>
+    <div class="ms">Buat kelompok penerima email baru</div>
+    <div class="ig">
+      <div class="fl">Nama Dataset</div>
+      <input type="text" class="ci" id="dsName"
+        placeholder="Kelas 1A, Alumni 2023..."
+        onkeydown="if(event.key==='Enter')confirmDs()">
+    </div>
+    <div class="ma">
+      <button class="btn btn-g" onclick="closeM('mAddDs')">Batal</button>
+      <button class="btn btn-p" onclick="confirmDs()">Buat &amp; Atur Kolom →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Column Manager -->
+<div class="mo" id="mColMgr">
+  <div class="mc" style="width:520px">
+    <div class="mt">Kelola Kolom</div>
+    <div class="ms">Atur nama, placeholder, dan kolom email tujuan</div>
+    <div class="ib" style="margin-bottom:14px">
+      Kolom bertanda <strong>📧</strong> digunakan sebagai tujuan kirim. Placeholder
+      <code style="background:rgba(79,142,247,0.1);padding:2px 6px;border-radius:4px;font-size:11px">{{nama_kolom}}</code>
+      dapat dipakai di template email.
+    </div>
+    <div id="colList" class="col-list"></div>
+    <button class="btn btn-g btn-sm btn-fw" style="margin-top:10px" onclick="addCol()">＋ Tambah Kolom</button>
+    <div class="ma">
+      <button class="btn btn-g" onclick="closeM('mColMgr')">Batal</button>
+      <button class="btn btn-p" onclick="saveCols()">Simpan Kolom</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preview -->
+<div class="mo" id="mPreview">
+  <div class="mc" style="width:560px">
+    <div class="mt">Preview Email</div>
+    <div class="ms">Tampilan email per penerima — link bisa diklik langsung</div>
+    <div class="prev-nav">
+      <button class="btn btn-g btn-sm" onclick="prevP()">← Sblm</button>
+      <span style="font-size:12px;color:var(--text-muted)" id="pCtr">1/1</span>
+      <button class="btn btn-g btn-sm" onclick="nextP()">Brkt →</button>
+    </div>
+    <div style="margin-bottom:8px">
+      <div class="fl">Ke</div>
+      <div style="font-size:13px;color:var(--text-dim);padding:6px 0" id="pTo">—</div>
+    </div>
+    <div style="margin-bottom:8px">
+      <div class="fl">Subjek</div>
+      <div style="font-size:13px;color:var(--text-dim);padding:6px 0" id="pSubj">—</div>
+    </div>
+    <div>
+      <div class="fl">Isi</div>
+      <div class="prev-email" id="pBody">—</div>
+    </div>
+    <div class="ma"><button class="btn btn-g" onclick="closeM('mPreview')">Tutup</button></div>
+  </div>
+</div>
+
+<!-- Confirm Send -->
+<div class="mo" id="mConfirm">
+  <div class="mc">
+    <div class="mt">Konfirmasi Pengiriman</div>
+    <div class="ms">Pastikan data dan template sudah benar</div>
+    <div class="confirm-grid">
+      <div class="ci2"><div class="cv" id="cTotal" style="color:var(--accent)">0</div><div class="cl">Email akan dikirim</div></div>
+      <div class="ci2"><div class="cv" id="cDelay" style="color:var(--warning)">2s</div><div class="cl">Delay antar email</div></div>
+      <div class="ci2" style="grid-column:1/-1"><div class="cv" id="cEst" style="color:var(--text-dim);font-size:16px">~0 detik</div><div class="cl">Estimasi waktu</div></div>
+    </div>
+    <div class="ib" id="cNote"></div>
+    <div class="ma">
+      <button class="btn btn-g" onclick="closeM('mConfirm')">Batal</button>
+      <button class="btn btn-s" onclick="startSend()">✉️ Mulai Kirim</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-c" id="toastC"></div>
+<script src="app_mail_blast.js"></script>
+<script>
+/* Sakura animasi pada login screen — identik initLoadingSakura */
+(function() {
+  var container = document.getElementById('loginSakura');
+  if (!container) return;
+  function spawnPetal() {
+    var screen = document.getElementById('loginScreen');
+    if (!screen || screen.style.display === 'none') return;
+    var W = window.innerWidth, H = window.innerHeight;
+    var sz = 4 + Math.random() * 6;
+    var x = Math.random() * (W + 40) - 20, y = -sz, angle = Math.random() * 360;
+    var dur = 4500 + Math.random() * 3500;
+    var xDrift = (Math.random() > .5 ? 1 : -1) * (14 + Math.random() * 20);
+    var vyMin = 40 + Math.random() * 20, vyMax = 130 + Math.random() * 60;
+    var totalSpin = (360 + Math.random() * 180) * (Math.random() > .5 ? 1 : -1);
+    var alpha = .2 + Math.random() * .35;
+    var radius = Math.random() > .5 ? '50% 0 50% 0' : '0 50% 0 50%';
+    var startTs = performance.now(), lastTs = startTs;
+    var el = document.createElement('div');
+    el.style.cssText = 'position:absolute;width:'+sz+'px;height:'+sz+'px;background:rgba(255,180,210,'+alpha+');border-radius:'+radius+';pointer-events:none;z-index:1;will-change:transform,opacity;left:0;top:0';
+    container.appendChild(el);
+    function frame(ts) {
+      var elapsed = ts - startTs, dt = Math.min((ts - lastTs) / 1000, .05); lastTs = ts;
+      var screen2 = document.getElementById('loginScreen');
+      if (!screen2 || screen2.style.display === 'none' || elapsed > dur || y > H + sz + 10) { el.remove(); return; }
+      var p = Math.min(elapsed / dur, 1);
+      var vx = xDrift * Math.cos(p * Math.PI * 2) * (Math.PI * 2 / (dur / 1000));
+      var ease = p * p * (3 - 2 * p);
+      var vy = vyMin + (vyMax - vyMin) * ease - 18 * Math.abs(Math.sin(p * Math.PI * 2));
+      x += vx * dt; y += Math.max(8, vy) * dt;
+      var curSpin = (totalSpin / (dur / 1000)) * (0.7 + 0.3 * Math.abs(Math.cos(p * Math.PI)));
+      angle += curSpin * dt;
+      var opacity = elapsed < 400 ? elapsed / 400 : p > 0.8 ? Math.max(0, (1-p)/0.2) : 1;
+      el.style.opacity = opacity;
+      el.style.transform = 'translate('+(x-sz/2)+'px,'+(y-sz/2)+'px) rotate('+angle+'deg)';
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  for (var i = 0; i < 10; i++) (function(i){ setTimeout(spawnPetal, i * 180); })(i);
+  setInterval(spawnPetal, 700);
+})();
+</script>
+</body>
+</html>
