@@ -458,6 +458,7 @@ img { max-width: 100%; display: block; }
   background: var(--white);
   border: 1px solid var(--grey-light);
   padding: 2px 10px; border-radius: 99px;
+  align-self: flex-start;
 }
 .dsh-biaya {
   font-size: .8rem; font-weight: 700;
@@ -855,9 +856,9 @@ img { max-width: 100%; display: block; }
 }
 
 /* ── Dok sesi header sub-info ── */
-.dsh-info { display:flex; flex-direction:column; gap:2px; }
+.dsh-info { display:flex; flex-direction:column; gap:2px; align-items:flex-start; }
 .dsh-tanggal { font-weight:600; font-size:.92rem; color:var(--charcoal); }
-.dsh-jam { font-size:.78rem; color:var(--grey-mid); }
+.dsh-jam { font-size:.78rem; color:var(--grey-mid); align-self:flex-start; }
 .dsh-ket { font-size:.78rem; color:var(--purple-mid); font-style:italic; }
 
 /* Hadir grid */

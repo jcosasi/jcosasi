@@ -1104,11 +1104,14 @@ function printLaporanSesi(idx) {
     : '–';
 
   const hadirRows = [];
-  const parseNama = (str, peran) =>
-    (str||'').split(',').map(n=>n.trim()).filter(Boolean).map(nama => ({ nama, peran }));
-  parseNama(d.hadir_peserta,    'Peserta').forEach(r => hadirRows.push(r));
-  parseNama(d.hadir_panitia,    'Panitia').forEach(r => hadirRows.push(r));
-  parseNama(d.hadir_narasumber, 'Narasumber').forEach(r => hadirRows.push(r));
+  const parseNama = (strNama, strKelas, peran) => {
+    const names  = (strNama||'').split(',').map(n=>n.trim()).filter(Boolean);
+    const klases = (strKelas||'').split(',').map(k=>k.trim());
+    return names.map((nama, i) => ({ nama, kelas: klases[i]||'', peran }));
+  };
+  parseNama(d.hadir_peserta,    d.kelas_peserta,    'Peserta').forEach(r => hadirRows.push(r));
+  parseNama(d.hadir_panitia,    d.kelas_panitia,    'Panitia').forEach(r => hadirRows.push(r));
+  parseNama(d.hadir_narasumber, d.kelas_narasumber, 'Narasumber').forEach(r => hadirRows.push(r));
 
   // Biaya — parseDokRow handles comma-separated
   const { fotos: fotosArr, biayaRows: biayaItems } = parseDokRow(d);
@@ -1419,6 +1422,7 @@ ${hadirRows.length ? `
     <tr>
       <th style="width:36px">No</th>
       <th>Nama</th>
+      <th style="width:90px">Kelas</th>
       <th style="width:110px">Peran</th>
       <th style="width:110px">Tanda Tangan</th>
     </tr>
@@ -1427,6 +1431,7 @@ ${hadirRows.length ? `
     ${hadirRows.map((r,i) => `<tr>
       <td class="num-col">${i+1}</td>
       <td>${r.nama}</td>
+      <td>${r.kelas||'<span style="color:#bbb">–</span>'}</td>
       <td><span class="badge-${r.peran.toLowerCase()}">${r.peran}</span></td>
       <td style="height:24px"></td>
     </tr>`).join('')}

@@ -779,13 +779,16 @@ function buildSesiViewHtml(idx) {
     ? d.waktu_mulai + (d.waktu_selesai ? ' – ' + d.waktu_selesai : '') + (dur ? ' (' + dur + ')' : '')
     : '–';
 
-  // Daftar hadir flat
+  // Daftar hadir flat + kelas
   const hadirRows = [];
-  const parseNama = (str, peran) =>
-    (str||'').split(',').map(n=>n.trim()).filter(Boolean).map(nama=>({nama,peran}));
-  parseNama(d.hadir_peserta,    'Peserta').forEach(r=>hadirRows.push(r));
-  parseNama(d.hadir_panitia,    'Panitia').forEach(r=>hadirRows.push(r));
-  parseNama(d.hadir_narasumber, 'Narasumber').forEach(r=>hadirRows.push(r));
+  const parseNama = (strNama, strKelas, peran) => {
+    const names  = (strNama||'').split(',').map(n=>n.trim()).filter(Boolean);
+    const klases = (strKelas||'').split(',').map(k=>k.trim());
+    return names.map((nama, i) => ({ nama, kelas: klases[i]||'', peran }));
+  };
+  parseNama(d.hadir_peserta,    d.kelas_peserta,    'Peserta').forEach(r=>hadirRows.push(r));
+  parseNama(d.hadir_panitia,    d.kelas_panitia,    'Panitia').forEach(r=>hadirRows.push(r));
+  parseNama(d.hadir_narasumber, d.kelas_narasumber, 'Narasumber').forEach(r=>hadirRows.push(r));
 
   const { fotos: fotosArr, biayaRows: biayaItems } = parseDokRow(d);
   const totalBiaya = biayaItems.reduce((s,r)=>s+rupiahNum(r.biaya_aktual),0);
@@ -826,8 +829,8 @@ function buildSesiViewHtml(idx) {
   const hadirTable = hadirRows.length ? `
     <div class="sv-sec-title">✅ Daftar Hadir</div>
     <table class="sv-tbl">
-      <thead><tr><th style="width:36px">No</th><th>Nama</th><th style="width:110px">Peran</th></tr></thead>
-      <tbody>${hadirRows.map((r,i)=>`<tr><td class="sv-num-col">${i+1}</td><td>${r.nama}</td><td><span class="sv-badge sv-badge-${r.peran.toLowerCase()}">${r.peran}</span></td></tr>`).join('')}</tbody>
+      <thead><tr><th style="width:36px">No</th><th>Nama</th><th style="width:90px">Kelas</th><th style="width:110px">Peran</th></tr></thead>
+      <tbody>${hadirRows.map((r,i)=>`<tr><td class="sv-num-col">${i+1}</td><td>${r.nama}</td><td>${r.kelas||'<span style="color:#bbb">–</span>'}</td><td><span class="sv-badge sv-badge-${r.peran.toLowerCase()}">${r.peran}</span></td></tr>`).join('')}</tbody>
     </table>` : '';
 
   const biayaTable = biayaItems.length ? `
