@@ -1036,11 +1036,13 @@ function openEditJad(i) {
   openModal('jadwalModal');
 }
 function pasteJadwal(pid){
-  // Buka modal paste khusus jadwal
   const raw = prompt(
     'Paste jadwal dari Excel/Sheets/CSV:\n'
-    +'Kolom: tanggal (YYYY-MM-DD) | jam (HH:MM)\n'
-    +'Contoh:\n2026-03-15\t14:00\n2026-04-05\t09:00'
+    +'Kolom: tanggal | jam | catatan | penanggung_jawab\n'
+    +'(kolom 3 & 4 opsional)\n\n'
+    +'Contoh:\n'
+    +'2026-03-15\t14:00\tLatihan rutin\tBudi\n'
+    +'2026-04-05\t09:00'
   );
   if(!raw) return;
   const rows=parsePasteText(raw);
@@ -1048,6 +1050,8 @@ function pasteJadwal(pid){
   rows.forEach(r=>{
     const tgl=(r[0]||'').trim();
     const jam=(r[1]||'14:00').trim();
+    const cat=(r[2]||'').trim();
+    const pj =(r[3]||'').trim();
     // Validasi format tanggal minimal ada angka
     if(!/\d{4}/.test(tgl)) return;
     // Normalisasi: DD/MM/YYYY → YYYY-MM-DD
@@ -1055,13 +1059,62 @@ function pasteJadwal(pid){
     const dmy=tgl.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
     if(dmy) normTgl=dmy[3]+'-'+dmy[2].padStart(2,'0')+'-'+dmy[1].padStart(2,'0');
     const ni=Date.now()+added;
-    S.jad.push({proker_id:pid,tanggal:normTgl,jam:jam||'14:00',_i:ni,_m:false,_n:true,_d:false});
+    S.jad.push({proker_id:pid,tanggal:normTgl,jam:jam||'14:00',catatan:cat,penanggung_jawab:pj,_i:ni,_m:false,_n:true,_d:false});
     logC('add','jadwal',ni,pid+' '+normTgl);
     added++;
   });
   if(added){ renderAll(); toast('📋 '+added+' jadwal ditambahkan','success'); }
   else toast('Tidak ada jadwal valid yang ditemukan','warning');
 }
+function pasteJadwalGlobal() {
+  const pkList = Object.entries(PK).map(([id, p]) => `#${id} ${p.n}`).join(' · ');
+  showPasteDialog(
+    '📋 Paste Jadwal — Multi Proker',
+    '📌 Format kolom: <strong>proker_id | tanggal | jam | catatan | penanggung_jawab</strong><br>'
+    + '&nbsp;&nbsp;· proker_id: nomor proker (01–15)<br>'
+    + '&nbsp;&nbsp;· tanggal: YYYY-MM-DD atau DD/MM/YYYY<br>'
+    + '&nbsp;&nbsp;· jam, catatan, penanggung_jawab: opsional<br>'
+    + '<span style="color:var(--gm)">Contoh: <code>01&emsp;2026-05-10&emsp;14:00&emsp;Latihan rutin&emsp;Budi</code></span><br>'
+    + '<span style="color:var(--gm);font-size:.72rem">Proker: ' + pkList + '</span>',
+    function(raw) {
+      const rows = parsePasteText(raw);
+      let added = 0, skipped = 0;
+      rows.forEach(r => {
+        const pid = (r[0]||'').trim().replace(/^#/,'').padStart(2,'0');
+        const tgl = (r[1]||'').trim();
+        const jam = (r[2]||'14:00').trim();
+        const cat = (r[3]||'').trim();
+        const pj  = (r[4]||'').trim();
+
+        // Validasi proker_id
+        if (!PK[pid]) { skipped++; return; }
+        // Validasi tanggal
+        if (!/\d{4}/.test(tgl)) { skipped++; return; }
+
+        // Normalisasi DD/MM/YYYY → YYYY-MM-DD
+        let normTgl = tgl;
+        const dmy = tgl.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (dmy) normTgl = dmy[3]+'-'+dmy[2].padStart(2,'0')+'-'+dmy[1].padStart(2,'0');
+
+        const ni = Date.now() + added;
+        S.jad.push({
+          proker_id: pid, tanggal: normTgl,
+          jam: jam||'14:00', catatan: cat, penanggung_jawab: pj,
+          _i: ni, _m: false, _n: true, _d: false
+        });
+        logC('add','jadwal',ni, pid+' '+normTgl);
+        added++;
+      });
+      if (added) {
+        renderAll();
+        toast('📋 '+added+' jadwal ditambahkan'+(skipped?' ('+skipped+' baris dilewati)':''), 'success');
+      } else {
+        toast('Tidak ada jadwal valid — cek format proker_id dan tanggal', 'warning');
+      }
+    }
+  );
+}
+
 function saveJadwal() {
   const i  = document.getElementById('ej_idx').value;
   const elCat = document.getElementById('ej_catatan');
