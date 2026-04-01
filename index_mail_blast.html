@@ -3,42 +3,56 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MailBlast — Email Sender Otomatis</title>
+<title>MailBlast — JCOSASI</title>
+<link rel="icon" type="image/png" href="logo-jcosasi.png" />
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style_mail_blast.css">
 </head>
 <body>
 
-<!-- LOGIN -->
-<div id="loginScreen">
-  <!-- Layer dekorasi identik .lov -->
-  <div class="login-dots"></div>
-  <div class="login-circle-1"></div>
-  <div class="login-circle-2"></div>
-  <div class="login-sakura" id="loginSakura"></div>
-  <div class="login-card">
-    <div class="login-logo">
-      <div class="login-logo-icon">✉️</div>
-      <div class="login-logo-text">Mail<span>Blast</span></div>
+<!-- LOGIN — identik .lov index_input.html -->
+<div class="lov" id="lov">
+  <div class="lov-bg"></div>
+  <div class="lov-grid"></div>
+  <div class="lov-sakura-static"></div>
+  <div class="lov-sakura" id="lovSakura"></div>
+  <div class="lov-circle-1"></div>
+  <div class="lov-circle-2"></div>
+  <div class="lov-content">
+    <div class="lov-logo">
+      <img src="logo-jcosasi.png" alt="JCOSASI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
+      <span class="lov-logo-fallback" style="display:none">✉️</span>
     </div>
-    <div class="login-title">Verifikasi Akses</div>
-    <div class="login-sub">Masukkan token akses yang diberikan administrator untuk melanjutkan.</div>
-    <div class="login-field">
-      <label class="login-label">Token Akses</label>
-      <div class="token-wrap">
-        <input type="password" id="tokenInp" class="token-input"
-          placeholder="••••••••••••••••"
-          autocomplete="off" spellcheck="false"
-          onkeydown="if(event.key==='Enter')doLogin()" />
-        <button class="eye-btn" onclick="toggleEye()" id="eyeBtn">👁</button>
+    <div style="text-align:center">
+      <div class="lov-title">MailBlast</div>
+      <div class="lov-subtitle">Email Sender — JCOSASI</div>
+    </div>
+    <div class="lov-bar-wrap"><div class="lov-bar"></div></div>
+    <div class="ltx" id="ltx">Masukkan token akses untuk melanjutkan</div>
+    <!-- Token Card -->
+    <div class="lov-token-card" id="lovTokenCard">
+      <div class="lov-token-icon">✉️</div>
+      <div class="lov-token-label">Token Akses</div>
+      <div class="lov-token-hint">Masukkan token yang diberikan administrator</div>
+      <div class="lov-token-row">
+        <input
+          type="password"
+          id="tokenInp"
+          class="lov-token-input"
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          autocomplete="off"
+          spellcheck="false"
+          onkeydown="if(event.key==='Enter')doLogin()"
+        />
+        <button class="lov-token-eye" id="eyeBtn" type="button" onclick="toggleEye()" title="Tampilkan/sembunyikan token">👁</button>
       </div>
-      <div class="login-err" id="loginErr"><span>✕</span><span id="loginErrMsg">Token salah.</span></div>
+      <button class="lov-token-btn" id="loginBtn" type="button" onclick="doLogin()">
+        <div class="lov-spinner" id="spinner" style="display:none"></div>
+        <span id="loginBtnTxt">Konfirmasi</span>
+        <span class="lov-token-arr">→</span>
+      </button>
+      <div class="lov-token-status" id="loginErr"></div>
     </div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">
-      <div class="spinner" id="spinner"></div>
-      <span id="loginBtnTxt">Verifikasi &amp; Masuk</span>
-    </button>
-    <div class="login-footer">Email Sender via Google Apps Script &amp; Gmail.<br>Hubungi administrator jika belum punya token.</div>
   </div>
 </div>
 
@@ -60,6 +74,7 @@
       <div class="sidebar-hdr">Dataset <button class="ico-btn" onclick="showAddDs()" title="Tambah">＋</button></div>
       <div class="ds-list" id="dsList"></div>
       <div class="sidebar-foot">
+        <button class="btn btn-g btn-sm btn-fw" onclick="showImportSheets()">📊 Import Google Sheets</button>
         <button class="btn btn-g btn-sm btn-fw" onclick="exportCSV()">⬇ Export CSV</button>
         <button class="btn btn-g btn-sm btn-fw" onclick="document.getElementById('csvFile').click()">⬆ Import CSV</button>
         <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCSV(event)">
@@ -226,7 +241,7 @@ function doGet(e) {
       }
       // Kirim sebagai HTML agar link bisa diklik
       GmailApp.sendEmail(to, subject, "", {
-        htmlBody: body.replace(/\n/g, "<br>")
+        htmlBody: body  // body sudah HTML dari client (newline → &lt;br&gt; dilakukan di frontend)
       });
       return respond("success", "Terkirim ke " + to);
     }
@@ -336,15 +351,41 @@ function respond(status, message) {
   </div>
 </div>
 
+<!-- Modal Import Google Sheets -->
+<div class="mo" id="mImportSheets">
+  <div class="mc" style="max-width:500px">
+    <div class="mt">📊 Import dari Google Sheets</div>
+    <div class="ms">Ambil data langsung dari sheet anggota JCOSASI</div>
+    <div class="ig">
+      <div class="fl">Nama Dataset Baru</div>
+      <input type="text" class="ci" id="isName" placeholder="cth: Anggota Aktif 2026" />
+    </div>
+    <div class="ig" style="margin-top:10px">
+      <div class="fl">URL API Google Sheets</div>
+      <input type="text" class="ci" id="isUrl"
+        value="https://script.google.com/macros/s/AKfycby4syb7I0ygt_TuYPo3A3O-mQHNn8O0JLudGIWHzxS-AFa63EIZPaNL0QEOq5bkPo6AAQ/exec?sheet=anggota"
+        placeholder="https://script.google.com/macros/s/..." />
+      <div style="font-size:.72rem;color:var(--gm);margin-top:5px">
+        Kolom yang diimpor: <code style="background:var(--pg);padding:2px 6px;border-radius:4px;font-size:.7rem;color:var(--pm)">nama · kelas · angkatan · status · no_hp · email · catatan · nama_ortu · no_hp_ortu · email_ortu</code>
+      </div>
+    </div>
+    <div class="ib" id="isStatus" style="display:none;margin-top:10px"></div>
+    <div class="ma">
+      <button class="btn btn-g" onclick="closeM('mImportSheets')">Batal</button>
+      <button class="btn btn-p" id="isBtn" onclick="doImportSheets()">📥 Import Sekarang</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-c" id="toastC"></div>
 <script src="app_mail_blast.js"></script>
 <script>
 /* Sakura animasi pada login screen — identik initLoadingSakura */
 (function() {
-  var container = document.getElementById('loginSakura');
+  var container = document.getElementById('lovSakura');
   if (!container) return;
   function spawnPetal() {
-    var screen = document.getElementById('loginScreen');
+    var screen = document.getElementById('lov');
     if (!screen || screen.style.display === 'none') return;
     var W = window.innerWidth, H = window.innerHeight;
     var sz = 4 + Math.random() * 6;
@@ -361,7 +402,7 @@ function respond(status, message) {
     container.appendChild(el);
     function frame(ts) {
       var elapsed = ts - startTs, dt = Math.min((ts - lastTs) / 1000, .05); lastTs = ts;
-      var screen2 = document.getElementById('loginScreen');
+      var screen2 = document.getElementById('lov');
       if (!screen2 || screen2.style.display === 'none' || elapsed > dur || y > H + sz + 10) { el.remove(); return; }
       var p = Math.min(elapsed / dur, 1);
       var vx = xDrift * Math.cos(p * Math.PI * 2) * (Math.PI * 2 / (dur / 1000));

@@ -6,7 +6,7 @@
 ═══════════════════════════════════════════════ */
 
 // ── HARDCODED CONFIG ───────────────────────────
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxwQoyjGlkZIg1w2eCcgUMmzAznkI4OGp6EZUhP809sCUeoL_xZDvprav2lGIR8W4y00g/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwm-AE--xJFBnNryXcfpPiH3f--99VDBIlzODKn0hxaQJIefczxE3DpviZEGUnc899P/exec";
 
 // ── STATE ──────────────────────────────────────
 let TOKEN = null;
@@ -48,39 +48,96 @@ async function api(params) {
   return await res.json();
 }
 
-// ── LOGIN ──────────────────────────────────────
+// ── LOGIN — identik dengan index_input.html ──────
 async function doLogin() {
-  const t = document.getElementById('tokenInp').value.trim();
-  if (!t) { errLogin('Token tidak boleh kosong.'); return; }
-  setBusy(true);
-  TOKEN = t;
+  const inp  = document.getElementById('tokenInp');
+  const btn  = document.getElementById('loginBtn');
+  const stat = document.getElementById('loginErr');
+  const card = document.getElementById('lovTokenCard');
+  if (!inp || !btn) return;
+
+  const val = inp.value.trim();
+  if (!val) {
+    stat.className = 'lov-token-status err';
+    stat.textContent = 'Token tidak boleh kosong';
+    inp.focus(); return;
+  }
+
+  btn.disabled = true;
+  document.getElementById('spinner').style.display = 'block';
+  document.getElementById('loginBtnTxt').textContent = 'Memverifikasi…';
+  stat.className = 'lov-token-status wait';
+  stat.textContent = 'Memverifikasi…';
+
+  TOKEN = val;
   try {
     const d = await api({ action: 'verify' });
     if (d.status === 'success') {
-      hideErr();
-      fadeOut('loginScreen', () => { fadeIn('appScreen'); initApp(); });
+      stat.className = 'lov-token-status ok';
+      stat.textContent = '✓  Akses diberikan';
+      card.classList.add('confirmed');
+      setTimeout(() => {
+        const lov = document.getElementById('lov');
+        if (lov) { lov.style.transition = 'opacity .5s ease'; lov.style.opacity = '0'; setTimeout(() => { lov.style.display = 'none'; }, 520); }
+        const app = document.getElementById('appScreen');
+        if (app) { app.style.display = 'block'; }
+        initApp();
+      }, 600);
     } else {
-      TOKEN = null; errLogin('Token salah. Akses ditolak.'); shake();
+      TOKEN = null;
+      btn.disabled = false;
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('loginBtnTxt').textContent = 'Konfirmasi';
+      stat.className = 'lov-token-status err';
+      stat.textContent = '✕  Token salah, coba lagi';
+      inp.value = ''; inp.focus();
+      _shakeCard();
     }
   } catch (e) {
-    TOKEN = null; errLogin('Tidak bisa terhubung. Periksa koneksi & URL GAS.');
+    TOKEN = null;
+    btn.disabled = false;
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('loginBtnTxt').textContent = 'Konfirmasi';
+    stat.className = 'lov-token-status err';
+    stat.textContent = '✕  ' + (e.message || 'Gagal terhubung');
+    inp.focus();
   }
-  setBusy(false);
 }
 
-function setBusy(on) {
-  document.getElementById('loginBtn').disabled = on;
-  document.getElementById('spinner').style.display = on ? 'block' : 'none';
-  document.getElementById('loginBtnTxt').textContent = on ? 'Memverifikasi...' : 'Verifikasi & Masuk';
+function _shakeCard() {
+  const card = document.getElementById('lovTokenCard');
+  if (!card) return;
+  card.style.transition = 'transform .08s ease';
+  card.style.transform = 'translateX(-7px)';
+  setTimeout(() => { card.style.transform = 'translateX(7px)'; }, 80);
+  setTimeout(() => { card.style.transform = 'translateX(-4px)'; }, 160);
+  setTimeout(() => { card.style.transform = ''; card.style.transition = ''; }, 240);
 }
-function errLogin(m) { document.getElementById('loginErrMsg').textContent = m; document.getElementById('loginErr').classList.add('show'); }
-function hideErr()   { document.getElementById('loginErr').classList.remove('show'); }
-function shake() { const i = document.getElementById('tokenInp'); i.classList.add('shake'); setTimeout(() => i.classList.remove('shake'), 400); }
-function toggleEye() { const i = document.getElementById('tokenInp'); i.type = i.type === 'password' ? 'text' : 'password'; document.getElementById('eyeBtn').textContent = i.type === 'password' ? '👁' : '🙈'; }
 
-function doLogout() { TOKEN = null; fadeOut('appScreen', () => { document.getElementById('tokenInp').value = ''; fadeIn('loginScreen'); }); }
-function fadeOut(id, cb) { const el = document.getElementById(id); el.style.transition = 'opacity 0.35s'; el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; el.style.opacity = ''; if (cb) cb(); }, 360); }
-function fadeIn(id)  { const el = document.getElementById(id); el.style.opacity = '0'; el.style.display = id === 'loginScreen' ? 'flex' : 'block'; el.style.transition = 'opacity 0.35s'; setTimeout(() => el.style.opacity = '1', 10); }
+function toggleEye() {
+  const i = document.getElementById('tokenInp');
+  const e = document.getElementById('eyeBtn');
+  if (!i) return;
+  i.type = i.type === 'password' ? 'text' : 'password';
+  if (e) e.textContent = i.type === 'password' ? '👁' : '🙈';
+}
+
+function doLogout() {
+  TOKEN = null;
+  const app = document.getElementById('appScreen');
+  const lov = document.getElementById('lov');
+  const card = document.getElementById('lovTokenCard');
+  const inp  = document.getElementById('tokenInp');
+  const stat = document.getElementById('loginErr');
+  if (app) { app.style.transition = 'opacity .35s'; app.style.opacity = '0'; setTimeout(() => { app.style.display = 'none'; app.style.opacity = ''; }, 360); }
+  if (inp)  inp.value = '';
+  if (stat) { stat.className = 'lov-token-status'; stat.textContent = ''; }
+  if (card) card.classList.remove('confirmed');
+  if (lov)  { lov.style.display = 'flex'; lov.style.opacity = '0'; lov.style.transition = 'opacity .35s'; setTimeout(() => lov.style.opacity = '1', 10); }
+  document.getElementById('loginBtnTxt').textContent = 'Konfirmasi';
+  const btn = document.getElementById('loginBtn'); if (btn) btn.disabled = false;
+  document.getElementById('spinner').style.display = 'none';
+}
 
 // ── INIT ───────────────────────────────────────
 function initApp() {
@@ -247,21 +304,27 @@ function applyTpl(row) {
   const cols  = getCols();
   const links = getLinks();
 
-  const rep = str => {
+  const rep = (str, isBody) => {
     let out = str || '';
-    // Replace column placeholders
+    // Ganti placeholder kolom — escape HTML chars dari nilai data
     cols.forEach(c => {
-      out = out.replace(new RegExp(`\\{\\{${c.key}\\}\\}`, 'g'), row[c.key] || '');
+      const val = (row[c.key] || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      out = out.replace(new RegExp(`\\{\\{${c.key}\\}\\}`, 'g'), val);
     });
-    // Replace link placeholders → HTML anchor tags
+    // Ganti placeholder link → anchor HTML
     links.forEach((lnk, i) => {
-      const anchor = `<a href="${lnk.url}" style="color:#4f8ef7">${lnk.text || lnk.url}</a>`;
+      const href = lnk.url || '#';
+      const txt  = lnk.text || href;
+      // Anchor dengan spasi eksplisit dan style inline
+      const anchor = '<a href="' + href + '" style="color:#4f8ef7;text-decoration:underline">' + txt + '</a>';
       out = out.replace(new RegExp(`\\{\\{link_${i}\\}\\}`, 'g'), anchor);
     });
+    // Untuk body: convert newline → <br> di sisi client, bukan di GAS
+    if (isBody) out = out.replace(/\n/g, '<br>');
     return out;
   };
 
-  return { subject: rep(getDsTpl().subj), body: rep(getDsTpl().body) };
+  return { subject: rep(getDsTpl().subj, false), body: rep(getDsTpl().body, true) };
 }
 
 // ── DATASET ────────────────────────────────────
@@ -537,30 +600,8 @@ function renderPrev() {
     return;
   }
 
-  // applyTpl sudah menghasilkan HTML anchor (<a href="...">teks</a>).
-  // Kita perlu:
-  //   1. Escape teks biasa agar tidak merusak HTML
-  //   2. Tapi JANGAN escape tag <a> yang sudah dihasilkan applyTpl
-  //
-  // Cara aman: split body pada anchor tags, escape bagian teks,
-  // biarkan anchor tags apa adanya, lalu gabung kembali.
-  const anchorRe = /(<a\s[^>]*>[\s\S]*?<\/a>)/g;
-  const parts    = body.split(anchorRe);
-
-  const html = parts.map((part, idx) => {
-    if (idx % 2 === 1) {
-      // Ini adalah anchor tag hasil applyTpl — tampilkan apa adanya
-      return part;
-    }
-    // Ini teks biasa — escape HTML lalu ubah newline → <br>
-    return part
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>');
-  }).join('');
-
-  pBody.innerHTML = html;
+  // body sudah full HTML dari applyTpl (anchor + <br>) — langsung set innerHTML
+  pBody.innerHTML = body;
   document.getElementById('pCtr').textContent = `${pi + 1}/${pr.length}`;
 }
 
@@ -704,6 +745,110 @@ function importCSV(e) {
   };
   reader.readAsText(file);
   e.target.value='';
+}
+
+/* ════ IMPORT DARI GOOGLE SHEETS ════ */
+// Kolom sheet anggota yang dikenali
+const ANGGOTA_COLS = [
+  { key:'nama',       label:'Nama',         placeholder:'Nama lengkap',       isEmail:false },
+  { key:'kelas',      label:'Kelas',         placeholder:'cth: XI IPA A',       isEmail:false },
+  { key:'angkatan',   label:'Angkatan',      placeholder:'cth: 12',             isEmail:false },
+  { key:'status',     label:'Status',        placeholder:'aktif / alumni',      isEmail:false },
+  { key:'no_hp',      label:'No HP',         placeholder:'08xxxxxxxxxx',        isEmail:false },
+  { key:'email',      label:'Email',         placeholder:'email@domain.com',    isEmail:true  },
+  { key:'catatan',    label:'Catatan',       placeholder:'Catatan tambahan',    isEmail:false },
+  { key:'nama_ortu',  label:'Nama Ortu',     placeholder:'Nama orang tua',      isEmail:false },
+  { key:'no_hp_ortu', label:'No HP Ortu',    placeholder:'08xxxxxxxxxx',        isEmail:false },
+  { key:'email_ortu', label:'Email Ortu',    placeholder:'email@domain.com',    isEmail:true  },
+];
+
+function showImportSheets() {
+  const status = document.getElementById('isStatus');
+  if (status) { status.style.display = 'none'; status.textContent = ''; }
+  const btn = document.getElementById('isBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '📥 Import Sekarang'; }
+  // Default nama dataset
+  const nameEl = document.getElementById('isName');
+  if (nameEl && !nameEl.value) nameEl.value = 'Anggota ' + new Date().getFullYear();
+  openM('mImportSheets');
+}
+
+async function doImportSheets() {
+  const nameEl   = document.getElementById('isName');
+  const urlEl    = document.getElementById('isUrl');
+  const statusEl = document.getElementById('isStatus');
+  const btn      = document.getElementById('isBtn');
+
+  const dsName = (nameEl?.value || '').trim();
+  const apiUrl = (urlEl?.value || '').trim();
+
+  if (!dsName) { toast('Masukkan nama dataset terlebih dahulu', 'error'); nameEl?.focus(); return; }
+  if (!apiUrl)  { toast('URL API tidak boleh kosong', 'error'); urlEl?.focus(); return; }
+
+  // UI loading
+  btn.disabled = true;
+  btn.textContent = '⏳ Mengambil data…';
+  statusEl.style.display = 'block';
+  statusEl.style.background = 'var(--pg)';
+  statusEl.style.borderColor = 'rgba(107,52,175,.15)';
+  statusEl.style.color = 'var(--pm)';
+  statusEl.textContent = 'Menghubungi Google Sheets…';
+
+  try {
+    const res  = await fetch(apiUrl);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    // GAS read sheet mengembalikan: { status:'ok', data: [ {nama,kelas,...}, ... ] }
+    let rows = [];
+    if (data.status === 'ok' && Array.isArray(data.data)) {
+      rows = data.data;
+    } else if (Array.isArray(data)) {
+      rows = data;
+    } else {
+      throw new Error('Format data tidak dikenali: ' + JSON.stringify(data).slice(0,80));
+    }
+
+    // Filter baris deleted (delete_flag === 'TRUE')
+    rows = rows.filter(r => r.delete_flag !== 'TRUE' && r.delete_flag !== true);
+
+    if (!rows.length) {
+      throw new Error('Tidak ada data valid ditemukan di sheet');
+    }
+
+    // Buat dataset baru dengan kolom ANGGOTA_COLS
+    const key = 'ds_' + Date.now();
+    const importedRows = rows.map(r => {
+      const newRow = { _status: 'pending' };
+      ANGGOTA_COLS.forEach(c => {
+        newRow[c.key] = (r[c.key] !== undefined && r[c.key] !== null) ? String(r[c.key]) : '';
+      });
+      return newRow;
+    });
+
+    S.datasets[key] = {
+      name: dsName,
+      cols: deepCopy(ANGGOTA_COLS),
+      rows: importedRows,
+      tpl:  { subj: '', body: '', links: [] }
+    };
+    save();
+    setDs(key);
+    renderDs();
+    closeM('mImportSheets');
+    toast(`✓ ${importedRows.length} anggota berhasil diimpor`, 'success');
+
+    // Reset form
+    if (nameEl) nameEl.value = '';
+
+  } catch (err) {
+    statusEl.style.background = 'rgba(220,38,38,.08)';
+    statusEl.style.borderColor = 'rgba(220,38,38,.2)';
+    statusEl.style.color = 'var(--err)';
+    statusEl.textContent = '✕ Gagal: ' + (err.message || 'Error tidak diketahui');
+    btn.disabled = false;
+    btn.textContent = '📥 Import Sekarang';
+  }
 }
 
 function parseCSVLine(line) { const r=[];let cur='',inQ=false; for(const ch of line){if(ch==='"')inQ=!inQ;else if(ch===','&&!inQ){r.push(cur);cur='';}else cur+=ch;} r.push(cur); return r; }
