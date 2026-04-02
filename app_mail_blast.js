@@ -6,7 +6,9 @@
 ═══════════════════════════════════════════════ */
 
 // ── HARDCODED CONFIG ───────────────────────────
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwm-AE--xJFBnNryXcfpPiH3f--99VDBIlzODKn0hxaQJIefczxE3DpviZEGUnc899P/exec";
+// Ganti URL di bawah dengan URL deployment GAS Write (v9 + MailBlast) yang baru
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw9dQmCy9JaiDWby3xG5L71UvZCfcJp9LsroKBmUWte94cv472tW9k1_8u1lQuq82DQ/exec";
+// Token harus sama dengan WRITE_TOKEN di GAS (saat ini: 'oka')
 
 // ── STATE ──────────────────────────────────────
 let TOKEN = null;
@@ -145,6 +147,26 @@ function initApp() {
   if (!S.datasets) S.datasets = {};
   if (!S.cfg) S.cfg = { delay: 2, skip: true };
 
+  // Normalisasi dataset lama ─ tambah field yang mungkin belum ada
+  Object.values(S.datasets).forEach(ds => {
+    if (!ds.tpl) ds.tpl = { subj: '', body: '', links: [] };
+    if (!ds.cols) ds.cols = deepCopy(DEFAULT_COLS);
+
+    // Pastikan ada tepat satu kolom isEmail
+    const hasEmail = ds.cols.some(c => c.isEmail);
+    if (!hasEmail) {
+      // Cari kolom yang keynya mengandung 'email'
+      const emailCol = ds.cols.find(c => c.key.toLowerCase().includes('email'));
+      if (emailCol) emailCol.isEmail = true;
+      else ds.cols.push({ key:'email', label:'Email', placeholder:'email@domain.com', isEmail:true });
+    }
+
+    // Pastikan semua baris punya _selected (data lama tidak punya)
+    if (ds.rows) ds.rows.forEach(r => {
+      if (r._selected === undefined) r._selected = true;
+    });
+  });
+
   document.getElementById('delay').value   = S.cfg.delay || 2;
   document.getElementById('skipSent').value = S.cfg.skip !== false ? 'true' : 'false';
 
@@ -153,6 +175,7 @@ function initApp() {
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
   });
 
+  save(); // simpan kembali data yang sudah dinormalisasi
   renderDs();
   if (S.active && S.datasets[S.active]) setDs(S.active);
   else updateChips();
@@ -506,7 +529,7 @@ function saveCols() {
     const ds     = S.datasets[_editingDsKey];
     const oldCols = ds.cols || [];
     ds.rows = ds.rows.map(row => {
-      const newRow = { _status: row._status || 'pending' };
+      const newRow = { _status: row._status || 'pending', _selected: row._selected !== false };
       filled.forEach(col => { newRow[col.key] = oldCols.find(oc => oc.key === col.key) ? (row[col.key] || '') : ''; });
       return newRow;
     });
@@ -532,17 +555,58 @@ function emptyTbl() {
 function getCols()     { if (!S.active||!S.datasets[S.active]) return DEFAULT_COLS; return S.datasets[S.active].cols||DEFAULT_COLS; }
 function getEmailKey() { return (getCols().find(c=>c.isEmail)||{}).key||'email'; }
 
+function getColWidths() {
+  if (!S.active || !S.datasets[S.active]) return {};
+  return S.datasets[S.active].colWidths || {};
+}
+
+function setColWidth(key, w) {
+  if (!S.active || !S.datasets[S.active]) return;
+  if (!S.datasets[S.active].colWidths) S.datasets[S.active].colWidths = {};
+  S.datasets[S.active].colWidths[key] = w;
+  save();
+}
+
+function resetColWidths() {
+  if (!S.active || !S.datasets[S.active]) return;
+  S.datasets[S.active].colWidths = {};
+  save(); renderTbl();
+  toast('Lebar kolom direset', 'info');
+}
+
 function renderTbl() {
   if (!S.active || !S.datasets[S.active]) { emptyTbl(); return; }
   const ds   = S.datasets[S.active];
   const cols = ds.cols || DEFAULT_COLS;
   const rows = ds.rows || [];
-  const span = cols.length + 3;
+  const span = cols.length + 4;
+  const widths = getColWidths();
 
-  let h = `<table><thead><tr>
-    <th style="width:36px">#</th>
-    ${cols.map(c => `<th>${esc(c.label)}</th>`).join('')}
-    <th style="width:100px">Status</th>
+  const total    = rows.length;
+  const selCount = rows.filter(r => r._selected !== false).length;
+  const allChk   = total > 0 && selCount === total;
+  const someChk  = selCount > 0 && selCount < total;
+
+  let h = `<table id="mainTbl" style="table-layout:fixed"><colgroup>
+    <col style="width:36px">
+    <col style="width:32px">
+    ${cols.map(c => `<col data-key="${esc(c.key)}" style="width:${widths[c.key]||160}px">`).join('')}
+    <col style="width:110px">
+    <col style="width:40px">
+  </colgroup><thead><tr>
+    <th style="width:36px">
+      <input type="checkbox" id="chkAll"
+        ${allChk ? 'checked' : ''}
+        onchange="selectAll(this.checked)"
+        title="Pilih/batal semua"
+        style="cursor:pointer;width:15px;height:15px;accent-color:var(--pm)">
+    </th>
+    <th style="width:32px">#</th>
+    ${cols.map(c => `<th class="th-resizable" data-key="${esc(c.key)}" style="width:${widths[c.key]||160}px">
+      <span class="th-label">${esc(c.label)}</span>
+      <span class="col-resize-handle" onmousedown="initResize(event,'${esc(c.key)}')" title="Seret untuk ubah lebar"></span>
+    </th>`).join('')}
+    <th style="width:110px">Status</th>
     <th style="width:40px"></th>
   </tr></thead><tbody>`;
 
@@ -550,9 +614,15 @@ function renderTbl() {
     h += `<tr><td colspan="${span}" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">Klik "＋ Baris" untuk menambah data.</td></tr>`;
   } else {
     rows.forEach((row, i) => {
-      h += `<tr>
+      const sel = row._selected !== false;
+      h += `<tr class="${sel ? '' : 'row-unsel'}">
+        <td style="padding:0 0 0 12px;width:36px;vertical-align:middle">
+          <input type="checkbox" ${sel ? 'checked' : ''}
+            onchange="toggleSelect(${i},this.checked)"
+            style="cursor:pointer;width:15px;height:15px;accent-color:var(--pm)">
+        </td>
         <td class="rn">${i+1}</td>
-        ${cols.map(c => `<td><input type="${c.isEmail?'email':'text'}" value="${esc(row[c.key]||'')}" placeholder="${esc(c.placeholder||c.label)}" onchange="upd(${i},'${c.key}',this.value)"></td>`).join('')}
+        ${cols.map(c => `<td style="width:${widths[c.key]||160}px;max-width:${widths[c.key]||160}px"><input type="text" value="${esc(row[c.key]||'')}" placeholder="${esc(c.placeholder||c.label)}" onchange="upd(${i},'${c.key}',this.value)" ${c.isEmail?'class="email-cell"':''}></td>`).join('')}
         <td class="sc">${sbadge(row._status)}</td>
         <td class="ac"><button class="ico-btn del" onclick="delRow(${i})" title="Hapus baris">✕</button></td>
       </tr>`;
@@ -560,13 +630,122 @@ function renderTbl() {
   }
   h += `</tbody></table><button class="add-row" onclick="addRow()">＋ Tambah Baris</button>`;
   document.getElementById('tblWrap').innerHTML = h;
+
+  const chkAll = document.getElementById('chkAll');
+  if (chkAll) chkAll.indeterminate = someChk;
+  _updateSelLabel();
+}
+
+// ── COLUMN RESIZE ──────────────────────────────
+let _resizeState = null;
+
+function initResize(e, colKey) {
+  e.preventDefault();
+  e.stopPropagation();
+  const th = e.target.closest('th');
+  const startX   = e.clientX;
+  const startW   = th.offsetWidth;
+
+  _resizeState = { colKey, startX, startW };
+
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  // Highlight kolom aktif
+  th.classList.add('resizing');
+
+  function onMove(ev) {
+    if (!_resizeState) return;
+    const diff = ev.clientX - _resizeState.startX;
+    const newW = Math.max(80, _resizeState.startW + diff);
+
+    // Update col element dan th secara langsung (tanpa re-render)
+    const tbl = document.getElementById('mainTbl');
+    if (tbl) {
+      const col = tbl.querySelector(`col[data-key="${_resizeState.colKey}"]`);
+      if (col) col.style.width = newW + 'px';
+      const thEl = tbl.querySelector(`th[data-key="${_resizeState.colKey}"]`);
+      if (thEl) thEl.style.width = newW + 'px';
+      // Update td cells
+      tbl.querySelectorAll(`td:nth-child(${_getColIndex(_resizeState.colKey)})`).forEach(td => {
+        td.style.width = newW + 'px';
+        td.style.maxWidth = newW + 'px';
+      });
+    }
+    _resizeState._currentW = newW;
+  }
+
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    if (_resizeState) {
+      const th2 = document.querySelector(`th[data-key="${_resizeState.colKey}"]`);
+      if (th2) th2.classList.remove('resizing');
+      if (_resizeState._currentW) {
+        setColWidth(_resizeState.colKey, _resizeState._currentW);
+      }
+      _resizeState = null;
+    }
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function _getColIndex(colKey) {
+  if (!S.active || !S.datasets[S.active]) return -1;
+  const cols = S.datasets[S.active].cols || DEFAULT_COLS;
+  const idx  = cols.findIndex(c => c.key === colKey);
+  // +3 karena: checkbox(1) + nomor(2) + kolom data mulai dari 3
+  return idx >= 0 ? idx + 3 : -1;
+}
+
+function _updateSelLabel() {
+  if (!S.active || !S.datasets[S.active]) return;
+  const rows = S.datasets[S.active].rows || [];
+  const sel  = rows.filter(r => r._selected !== false).length;
+  // Update sendBtn label jika ada seleksi
+  const btn = document.getElementById('sendBtn');
+  if (btn && rows.length) {
+    btn.textContent = sel === rows.length
+      ? '▶ Kirim Email'
+      : `▶ Kirim (${sel})`;
+  }
+}
+
+function toggleSelect(i, val) {
+  if (!S.active || !S.datasets[S.active]) return;
+  S.datasets[S.active].rows[i]._selected = val;
+  save();
+  // Update class tr langsung tanpa full re-render (lebih cepat)
+  const trs = document.querySelectorAll('#tblWrap tbody tr');
+  if (trs[i]) trs[i].className = val ? '' : 'row-unsel';
+  // Update header checkbox
+  const rows     = S.datasets[S.active].rows;
+  const total    = rows.length;
+  const selCount = rows.filter(r => r._selected !== false).length;
+  const chkAll   = document.getElementById('chkAll');
+  if (chkAll) {
+    chkAll.checked       = selCount === total && total > 0;
+    chkAll.indeterminate = selCount > 0 && selCount < total;
+  }
+  _updateSelLabel();
+  updStats();
+}
+
+function selectAll(val) {
+  if (!S.active || !S.datasets[S.active]) return;
+  S.datasets[S.active].rows.forEach(r => { r._selected = val; });
+  save(); renderTbl(); updStats();
 }
 
 function sbadge(s) { const m={pending:'Pending',sending:'Mengirim...',sent:'Terkirim',failed:'Gagal'}; const c=m[s]?s:'pending'; return `<span class="sb ${c}"><span class="sd"></span>${m[c]||'Pending'}</span>`; }
 
 function addRow() {
   if (!S.active) { toast('Pilih dataset dulu','error'); return; }
-  const newRow = { _status:'pending' };
+  const newRow = { _status:'pending', _selected:true };
   getCols().forEach(c => { newRow[c.key]=''; });
   S.datasets[S.active].rows.push(newRow);
   save(); renderTbl(); updStats();
@@ -581,7 +760,7 @@ let pi=0, pr=[];
 function showPreview() {
   if (!S.active) { toast('Pilih dataset dulu','error'); return; }
   const emailKey = getEmailKey();
-  pr = (S.datasets[S.active].rows||[]).filter(r=>r[emailKey]);
+  pr = (S.datasets[S.active].rows||[]).filter(r=>r._selected!==false && r[emailKey]);
   if (!pr.length) { toast('Tidak ada baris dengan email valid','error'); return; }
   pi=0; renderPrev(); openM('mPreview');
 }
@@ -625,7 +804,8 @@ function getRowsToSend() {
   if (!S.active) return [];
   const emailKey = getEmailKey();
   return (S.datasets[S.active].rows||[]).filter(r => {
-    if (!r[emailKey]||!validEmail(r[emailKey])) return false;
+    if (r._selected === false) return false;           // dikeluarkan user
+    if (!r[emailKey]||!validEmail((r[emailKey]||'').trim())) return false;
     if (S.cfg.skip&&r._status==='sent')          return false;
     return true;
   });
@@ -633,8 +813,22 @@ function getRowsToSend() {
 
 function showConfirm() {
   if (!S.active) { toast('Pilih dataset dulu','error'); return; }
-  const rows = getRowsToSend();
-  if (!rows.length) { toast('Tidak ada email valid untuk dikirim','error'); return; }
+  let rows = getRowsToSend();
+
+  // Jika kosong karena semua sudah 'sent' dan skip=true, tawarkan kirim ulang
+  if (!rows.length && S.cfg.skip) {
+    const emailKey = getEmailKey();
+    const allValid = (S.datasets[S.active].rows||[]).filter(r =>
+      r._selected !== false && validEmail((r[emailKey]||'').trim())
+    );
+    if (allValid.length > 0) {
+      if (confirm(`Semua ${allValid.length} email sudah pernah terkirim.\n\nKirim ulang ke semua penerima?`)) {
+        allValid.forEach(r => { r._status = 'pending'; });
+        save(); renderTbl(); updStats();
+        rows = getRowsToSend();
+      } else { return; }
+    } else { toast('Tidak ada email valid untuk dikirim','error'); return; }
+  } else if (!rows.length) { toast('Tidak ada email valid untuk dikirim','error'); return; }
   const d=S.cfg.delay, sec=rows.length*d;
   document.getElementById('cTotal').textContent = rows.length;
   document.getElementById('cDelay').textContent = d+'s';
@@ -646,35 +840,46 @@ function showConfirm() {
 
 async function startSend() {
   closeM('mConfirm'); tab('stats');
-  saveTpl(); // ensure latest template is saved
+  saveTpl();
   const ds       = S.datasets[S.active];
-  const allRows  = ds.rows;
   const emailKey = getEmailKey();
   const delay    = S.cfg.delay * 1000;
+  // Kirim hanya baris yang dipilih dan valid
+  const toSend   = getRowsToSend();
+  const allRows  = ds.rows;
   document.getElementById('sendBtn').disabled = true;
-  log('Mulai kirim: '+ds.name,'info');
+  log('Mulai kirim: '+ds.name+' ('+toSend.length+' penerima)','info');
   let sent=0, fail=0, skip=0;
 
-  for (let i=0; i<allRows.length; i++) {
-    const row      = allRows[i];
-    const emailVal = row[emailKey];
+  for (let i=0; i<toSend.length; i++) {
+    const row      = toSend[i];
+    const emailVal = (row[emailKey] || '').trim();
+    // Cari index asli di ds.rows untuk update status
+    const origIdx  = allRows.indexOf(row);
 
-    if (!emailVal||!validEmail(emailVal)) { log(`Baris ${i+1}: email invalid → lewati`,'warn'); skip++; prog(sent,fail,skip,allRows.length); continue; }
-    if (S.cfg.skip&&row._status==='sent') { skip++; prog(sent,fail,skip,allRows.length); continue; }
+    if (S.cfg.skip && row._status==='sent') { skip++; prog(sent,fail,skip,toSend.length); continue; }
 
-    allRows[i]._status = 'sending';
+    if (origIdx >= 0) { allRows[origIdx]._status = 'sending'; }
     save(); renderTbl();
 
     const { subject, body } = applyTpl(row);
 
     try {
       const d = await api({ action:'send', to:emailVal, subject, body });
-      if (d.status==='success') { allRows[i]._status='sent';   sent++; log(`✓ ${emailVal}`,'ok');  }
-      else                      { allRows[i]._status='failed'; fail++; log(`✕ ${emailVal} — ${d.message}`,'err'); }
-    } catch(e) {                  allRows[i]._status='failed'; fail++; log(`✕ ${emailVal} — ${e.message}`,'err'); }
+      if (d.status==='success') {
+        if (origIdx>=0) allRows[origIdx]._status='sent';
+        sent++; log(`✓ ${emailVal}`,'ok');
+      } else {
+        if (origIdx>=0) allRows[origIdx]._status='failed';
+        fail++; log(`✕ ${emailVal} — ${d.message}`,'err');
+      }
+    } catch(e) {
+      if (origIdx>=0) allRows[origIdx]._status='failed';
+      fail++; log(`✕ ${emailVal} — ${e.message}`,'err');
+    }
 
-    save(); renderTbl(); prog(sent,fail,skip,allRows.length);
-    if (i<allRows.length-1) await sleep(delay);
+    save(); renderTbl(); prog(sent,fail,skip,toSend.length);
+    if (i<toSend.length-1) await sleep(delay);
   }
 
   document.getElementById('sendBtn').disabled = false;
@@ -684,16 +889,17 @@ async function startSend() {
 
 function prog(s,f,sk,t) { const d=s+f+sk,pct=t?Math.round(d/t*100):0; document.getElementById('pFill').style.width=pct+'%'; document.getElementById('pPct').textContent=pct+'%'; document.getElementById('pStat').textContent=`${d}/${t} · ${s} terkirim · ${f} gagal`; updStats(); }
 function sleep(ms)       { return new Promise(r=>setTimeout(r,ms)); }
-function validEmail(e)   { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+function validEmail(e)   { const v = String(e||'').trim(); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 
 // ── STATS & LOG ────────────────────────────────
 function updStats() {
   if (!S.active) { ['sTotal','sSent','sFail','sPend'].forEach(id=>document.getElementById(id).textContent='0'); return; }
   const r = S.datasets[S.active].rows||[];
-  document.getElementById('sTotal').textContent = r.length;
-  document.getElementById('sSent').textContent  = r.filter(x=>x._status==='sent').length;
-  document.getElementById('sFail').textContent  = r.filter(x=>x._status==='failed').length;
-  document.getElementById('sPend').textContent  = r.filter(x=>!x._status||x._status==='pending').length;
+  const sel = r.filter(x=>x._selected!==false);
+  document.getElementById('sTotal').textContent = sel.length + (sel.length < r.length ? '/'+r.length : '');
+  document.getElementById('sSent').textContent  = sel.filter(x=>x._status==='sent').length;
+  document.getElementById('sFail').textContent  = sel.filter(x=>x._status==='failed').length;
+  document.getElementById('sPend').textContent  = sel.filter(x=>!x._status||x._status==='pending').length;
 }
 
 function resetStatus() {
@@ -735,7 +941,7 @@ function importCSV(e) {
     let n=0;
     lines.slice(1).forEach(line=>{
       const cells=parseCSVLine(line);
-      const newRow={_status:'pending'};
+      const newRow={_status:'pending',_selected:true};
       cols.forEach(c=>{newRow[c.key]='';});
       cells.forEach((val,i)=>{ if(colMap[i]) newRow[colMap[i]]=val.trim(); });
       ds.rows.push(newRow); n++;
@@ -819,7 +1025,7 @@ async function doImportSheets() {
     // Buat dataset baru dengan kolom ANGGOTA_COLS
     const key = 'ds_' + Date.now();
     const importedRows = rows.map(r => {
-      const newRow = { _status: 'pending' };
+      const newRow = { _status: 'pending', _selected: true };
       ANGGOTA_COLS.forEach(c => {
         newRow[c.key] = (r[c.key] !== undefined && r[c.key] !== null) ? String(r[c.key]) : '';
       });

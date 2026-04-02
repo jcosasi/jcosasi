@@ -199,8 +199,14 @@ header {
 table { width:100%; border-collapse:collapse; min-width:500px; }
 thead { position:sticky; top:0; z-index:10; background:var(--w); }
 th { padding:9px 12px; text-align:left; font-size:.65rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--gm); border-bottom:1.5px solid var(--gl); white-space:nowrap; user-select:none; }
-tr { transition:background var(--t); }
+tr { transition:background var(--t), opacity var(--t); }
 tr:hover td { background:var(--pp); }
+/* Baris tidak dipilih — redup */
+tr.row-unsel { opacity: .35; }
+tr.row-unsel:hover { opacity: .55; }
+tr.row-unsel td input { pointer-events: none; }
+tr.row-unsel td.ac button { pointer-events: auto; }
+tr.row-unsel td:first-child input { pointer-events: auto; }
 td { padding:0; border-bottom:1px solid var(--gl); vertical-align:middle; }
 td input { width:100%; padding:9px 12px; background:transparent; border:none; color:var(--ch); font-family:var(--fb); font-size:.82rem; outline:none; }
 td input:focus { background:var(--pg); }
@@ -343,3 +349,39 @@ select.ci { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xml
 .link-ph-badge:hover { background:var(--pl); color:#fff; border-color:var(--pl); }
 .link-preview-anchor { font-size:.78rem; color:var(--pm); text-decoration:underline; text-underline-offset:2px; word-break:break-all; }
 .link-preview-anchor:hover { color:var(--pd); }
+
+/* Email cell visual indicator — added fix */
+.email-cell { font-family: var(--fm, monospace); letter-spacing: .01em; }
+
+
+/* ── Column Resize ─────────────────────────── */
+table { table-layout: fixed; }
+th.th-resizable { position: relative; overflow: visible; }
+.th-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px; }
+.col-resize-handle {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.col-resize-handle::after {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 55%;
+  border-radius: 2px;
+  background: var(--gl);
+  transition: background .15s, height .15s;
+}
+.col-resize-handle:hover::after,
+th.resizing .col-resize-handle::after {
+  background: var(--pm);
+  height: 75%;
+}
+th.resizing { background: var(--pp) !important; }
+td { overflow: hidden; }
+td input { min-width: 0; }

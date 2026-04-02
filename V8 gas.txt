@@ -1,0 +1,732 @@
+// ============================================================
+//  JCOSASI — Google Apps Script (v9)
+//  Perubahan dari v8:
+//  - SHEET_HEADERS: tambah sheet 'pengumuman' (sistem pengumuman publik)
+//  - SHEET_HEADERS: tambah kolom catatan, penanggung_jawab ke proker_jadwal
+//  - SHEET_HEADERS: tambah kolom deskripsi_kegiatan ke proker_detail
+//  - SHEET_HEADERS: tambah kolom deskripsi_jabatan ke pengurus
+//  - DATE_COLUMNS: tambah tanggal_publish, tanggal_turun
+//
+//  Deploy: Manage deployments → Edit → New version → Deploy
+//  Izin  : Anyone
+//  Execute as: Me (not user deploying!)
+// ============================================================
+
+var DATE_COLUMNS = ['estimasi_tanggal','tanggal','tanggal_sesi','tanggal_target','tanggal_mulai','tanggal_selesai','tanggal_publish','tanggal_turun'];
+var TIME_COLUMNS = ['waktu_mulai','waktu_selesai','jam'];
+
+var SHEET_HEADERS = {
+  // Kolom 'id' dan 'delete_flag' adalah kolom manajemen:
+  //   id          = key unik per baris (gabungan field kunci, dibuat di client)
+  //   delete_flag = 'TRUE' artinya baris ini dihapus (akan dibersihkan oleh dedup)
+  pengurus:           ['jabatan_level','jabatan','nama','kelas','foto_url','bidang_nama','deskripsi_jabatan'],
+  proker_detail:      ['id','proker_id','tujuan','deskripsi_kegiatan','waktu_teks','estimasi_tanggal','lokasi','sasaran','pemateri','panitia','item_biaya','estimasi_biaya_item','biaya_aktual','delete_flag'],
+  proker_jadwal:      ['id','proker_id','tanggal','jam','catatan','penanggung_jawab','delete_flag'],
+  proker_activity:    ['proker_id','tanggal','status'],
+  proker_notif:       ['proker_id','tipe','judul','isi','tanggal'],
+  proker_notif_config:['id','proker_id','countdown_aktif','ajakan','ajakan_teks','ajakan_sub','wajib_hadir','wajib_hadir_teks','wajib_hadir_sanksi','delete_flag'],
+  proker_dokumentasi: ['id','proker_id','tanggal_sesi','foto_url','keterangan','hadir_peserta','kelas_peserta','hadir_panitia','kelas_panitia','hadir_narasumber','kelas_narasumber','materi','waktu_mulai','waktu_selesai','item_biaya','estimasi_biaya_item','biaya_aktual','kendala','delete_flag'],
+  anggota:            ['id','nama','kelas','angkatan','status','no_hp','catatan','delete_flag'],
+  pencapaian:         ['id','nama','angkatan','pencapaian','emblem','poin','keterangan','waktu','delete_flag'],
+  pengumuman:         ['id','judul','deskripsi','poster_url',
+                       'tanggal_publish','tanggal_turun',
+                       'target_audiens','persiapan','cara_daftar','link_pendaftaran',
+                       'waktu_kegiatan','lokasi_kegiatan',
+                       'narahubung_nama','narahubung_kontak',
+                       'dokumen_judul','dokumen_url',
+                       'tag','prioritas','efek_poster','aktif','delete_flag'],
+  login_confirm:      ['write_confirm','session','ts'],
+  upload_result:      ['upload_id','status','url','message','ts'],
+};
+
+// TOKEN hanya ada di sini (server-side). Tidak ada di file client.
+var WRITE_TOKEN = 'AAAAA';
+
+// ── doGet ──────────────────────────────────────────────────────
+function doGet(e) {
+  var cb     = e.parameter.callback || '';
+  var sheet  = e.parameter.sheet   || 'pengurus';
+  var action = e.parameter.action  || 'read';
+
+  try {
+    var result;
+
+    if (action === 'read') {
+      result = { status: 'ok', data: getSheetData(sheet) };
+
+    } else if (action === 'replaceAll') {
+      if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+      var payload = JSON.parse(e.parameter.payload || '{}');
+      result = { status: 'ok', replaced: replaceAllRows(sheet, payload.headers, payload.rows || []) };
+
+    } else if (action === 'dedup') {
+      // Hapus baris delete_flag=TRUE dan duplikat id (sisakan terbawah).
+      // Dipanggil setelah append delta selesai — tidak butuh payload.
+      if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+      result = { status: 'ok', removed: dedupSheet(sheet) };
+
+    } else {
+      if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+      var payload2 = {};
+      if (e.parameter.payload) payload2 = JSON.parse(e.parameter.payload);
+
+      var ss  = SpreadsheetApp.getActiveSpreadsheet();
+      var sh  = ss.getSheetByName(sheet);
+      if (!sh) throw new Error('Sheet "' + sheet + '" tidak ditemukan');
+      var headers = getOrCreateHeaders(sh, sheet);
+
+      if (action === 'upsert') {
+        var keyCol = payload2.key || headers[0];
+        var keyIdx = headers.indexOf(keyCol);
+        if (keyIdx < 0) throw new Error('Kolom "' + keyCol + '" tidak ditemukan');
+        var all = sh.getDataRange().getValues();
+        var found = false;
+        for (var i = 1; i < all.length; i++) {
+          if (String(all[i][keyIdx]).trim() === String(payload2.keyValue).trim()) {
+            sh.getRange(i+1, 1, 1, headers.length).setValues([buildRow(headers, payload2.row)]);
+            found = true; break;
+          }
+        }
+        if (!found) sh.appendRow(buildRow(headers, payload2.row));
+        result = { status: 'ok', action: found ? 'updated' : 'inserted' };
+
+      } else if (action === 'insert') {
+        var rows = payload2.rows || [payload2.row];
+        rows.forEach(function(r) { sh.appendRow(buildRow(headers, r)); });
+        result = { status: 'ok', inserted: rows.length };
+
+      } else if (action === 'delete') {
+        var kIdx = headers.indexOf(payload2.key || headers[0]);
+        result = { status: 'ok', deleted: deleteByKey(sh, kIdx, payload2.keyValue) };
+
+      } else if (action === 'replace') {
+        var kIdx2 = headers.indexOf(payload2.key || 'proker_id');
+        if (kIdx2 >= 0 && payload2.keyValue !== undefined) deleteByKey(sh, kIdx2, payload2.keyValue);
+        (payload2.rows || []).forEach(function(r) { sh.appendRow(buildRow(headers, r)); });
+        result = { status: 'ok', replaced: (payload2.rows || []).length };
+
+      } else if (action === 'uploadFile') {
+        if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+        var folder2  = SUBFOLDER_MAP[e.parameter.folder] || e.parameter.folder || 'pengumuman';
+        var subDir   = getOrCreateSubfolder(folder2);
+        var fname2   = e.parameter.filename || ('file_' + Date.now());
+        // base64 dikirim dalam field payload JSON (untuk menghindari URL terlalu panjang)
+        var payloadObj = e.parameter.payload ? JSON.parse(e.parameter.payload) : {};
+        var b64data  = payloadObj.base64 || e.parameter.base64 || '';
+        var decoded  = Utilities.base64Decode(b64data);
+        var blob3    = Utilities.newBlob(decoded, e.parameter.mimeType || 'application/octet-stream', fname2);
+        var file3    = subDir.createFile(blob3);
+        result = { status: 'ok', url: makePublicAndGetUrl(file3), id: file3.getId(), name: file3.getName() };
+
+      } else if (action === 'uploadFromUrl') {
+        if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+        var folder3    = SUBFOLDER_MAP[e.parameter.folder] || e.parameter.folder || 'pengumuman';
+        var subDir2    = getOrCreateSubfolder(folder3);
+        var fname3     = e.parameter.filename || ('file_' + Date.now());
+        var directUrl2 = toDriveDirectUrl(e.parameter.url);
+        var resp2      = UrlFetchApp.fetch(directUrl2, {
+          muteHttpExceptions: true,
+          followRedirects: true,
+        });
+        if (resp2.getResponseCode() !== 200) throw new Error('Gagal fetch URL: HTTP ' + resp2.getResponseCode() + ' — ' + directUrl2);
+        var blob4  = resp2.getBlob().setName(fname3);
+        var file4  = subDir2.createFile(blob4);
+        result = { status: 'ok', url: makePublicAndGetUrl(file4), id: file4.getId(), name: file4.getName() };
+
+      } else if (action === 'uploadChunk') {
+        if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+        // Simpan chunk ke PropertiesService (temporary storage)
+        var props     = PropertiesService.getScriptProperties();
+        var uploadId  = e.parameter.uploadId;
+        var chunkIdx  = parseInt(e.parameter.chunkIndex, 10);
+        var total     = parseInt(e.parameter.totalChunks, 10);
+        var chunkData = e.parameter.chunk;
+        // Simpan chunk dengan key: uploadId_chunkIndex
+        props.setProperty(uploadId + '_' + chunkIdx, chunkData);
+        props.setProperty(uploadId + '_meta', JSON.stringify({
+          folder:   e.parameter.folder,
+          filename: e.parameter.filename,
+          mimeType: e.parameter.mimeType,
+          total:    total,
+          uploadId: uploadId,
+        }));
+        result = { status: 'ok', chunk: chunkIdx, total: total };
+
+      } else if (action === 'finalizeUpload') {
+        if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+        var props2    = PropertiesService.getScriptProperties();
+        var uid       = e.parameter.uploadId;
+        var metaStr   = props2.getProperty(uid + '_meta');
+        if (!metaStr) throw new Error('Upload session tidak ditemukan atau sudah expired');
+        var meta2     = JSON.parse(metaStr);
+        // Gabungkan semua chunk
+        var parts = [];
+        for (var ci = 0; ci < meta2.total; ci++) {
+          var part = props2.getProperty(uid + '_' + ci);
+          if (!part) throw new Error('Chunk ' + ci + ' tidak ditemukan');
+          parts.push(part);
+        }
+        var fullBase64 = parts.join('');
+        // Simpan ke Drive
+        var subF2   = getOrCreateSubfolder(SUBFOLDER_MAP[meta2.folder] || meta2.folder || 'dokumentasi');
+        var decoded2= Utilities.base64Decode(fullBase64);
+        var blob5   = Utilities.newBlob(decoded2, meta2.mimeType || 'image/jpeg', meta2.filename);
+        var file5   = subF2.createFile(blob5);
+        var url5    = makePublicAndGetUrl(file5);
+        // Bersihkan chunks dari PropertiesService
+        for (var ci2 = 0; ci2 < meta2.total; ci2++) {
+          try { props2.deleteProperty(uid + '_' + ci2); } catch(_) {}
+        }
+        try { props2.deleteProperty(uid + '_meta'); } catch(_) {}
+        result = { status: 'ok', url: url5, id: file5.getId(), name: file5.getName() };
+
+      } else if (action === 'resolveFormUpload') {
+        if (e.parameter.token !== WRITE_TOKEN) throw new Error('Unauthorized');
+        var uploadId6 = e.parameter.uploadId || '';
+        if (!uploadId6) throw new Error('uploadId kosong');
+
+        // Cari sheet responses Form — cari sheet yang punya kolom 'upload_id'
+        var ss6        = SpreadsheetApp.getActiveSpreadsheet();
+        var responseSheet = null;
+        ss6.getSheets().forEach(function(sh) {
+          if (responseSheet) return;
+          if (sh.getLastRow() < 1) return;
+          var hdrs = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+          if (hdrs.some(function(h){ return String(h).toLowerCase().trim()==='upload_id'; }))
+            responseSheet = sh;
+        });
+        if (!responseSheet) throw new Error('Sheet responses Form tidak ditemukan. Pastikan Form sudah terhubung ke Spreadsheet ini.');
+
+        var hdrs8    = responseSheet.getRange(1,1,1,responseSheet.getLastColumn()).getValues()[0];
+        var uidCol8  = -1;
+        var fileCols = []; // bisa multi-kolom jika multi file
+        hdrs8.forEach(function(h, i) {
+          var lower = String(h).toLowerCase().trim();
+          if (lower === 'upload_id') { uidCol8 = i; return; }
+          // Kolom file: judulnya 'file', 'foto', 'dokumen', atau berisi URL Drive pada data
+          if (lower === 'file' || lower === 'foto' || lower === 'dokumen') fileCols.push(i);
+        });
+
+        var allData8 = responseSheet.getLastRow() > 1
+          ? responseSheet.getRange(2,1,responseSheet.getLastRow()-1,responseSheet.getLastColumn()).getValues()
+          : [];
+
+        // Jika fileCols masih kosong, deteksi dari isi data
+        if (fileCols.length === 0 && allData8.length > 0) {
+          allData8[0].forEach(function(cell, i) {
+            if (i !== uidCol8 && String(cell).indexOf('drive.google.com') >= 0) fileCols.push(i);
+          });
+        }
+        if (uidCol8 < 0) throw new Error('Kolom upload_id tidak ditemukan di sheet responses');
+
+        // Cari baris dengan upload_id cocok
+        var foundRow8 = null;
+        for (var ri8 = 0; ri8 < allData8.length; ri8++) {
+          if (String(allData8[ri8][uidCol8]).trim() === uploadId6.trim()) {
+            foundRow8 = allData8[ri8]; break;
+          }
+        }
+        if (!foundRow8) {
+          result = { status: 'not_found', message: 'Form belum disubmit atau upload_id tidak cocok' };
+        } else {
+          // Kumpulkan semua URL dari semua kolom file (multi-file support)
+          var rawUrls8 = [];
+          if (fileCols.length > 0) {
+            fileCols.forEach(function(ci) {
+              var cellVal = String(foundRow8[ci] || '').trim();
+              // Google Form multi-file: URL dipisah newline atau koma
+              cellVal.split(/[\n,]/).forEach(function(u) {
+                u = u.trim(); if (u) rawUrls8.push(u);
+              });
+            });
+          } else {
+            // Fallback: scan semua kolom cari yang ada drive.google.com
+            foundRow8.forEach(function(cell, i) {
+              if (i === uidCol8) return;
+              String(cell||'').split(/[\n,]/).forEach(function(u){
+                if (u.trim().indexOf('drive.google.com') >= 0) rawUrls8.push(u.trim());
+              });
+            });
+          }
+
+          var finalUrls8 = [];
+          var ts8 = Date.now();
+          rawUrls8.forEach(function(u, idx) {
+            u = u.trim(); if (!u) return;
+            try {
+              var mf8 = u.match(/id=([a-zA-Z0-9_-]+)/) || u.match(/\/d\/([a-zA-Z0-9_-]+)/);
+              if (!mf8) { finalUrls8.push(u); return; }
+              var src8  = DriveApp.getFileById(mf8[1]);
+              var ext8  = src8.getName().split('.').pop() || 'jpg';
+              // Nama file: proker_dokumentasi_{uploadId}_{index}_{timestamp}.{ext}
+              var newName8 = 'proker_dokumentasi_' + uploadId6 + '_' + (idx+1) + '_' + (ts8 + idx) + '.' + ext8;
+              var dest8 = getOrCreateSubfolder('dokumentasi');
+              var copy8 = src8.makeCopy(newName8, dest8);
+              copy8.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+              var nid8  = copy8.getId();
+              var mime8 = copy8.getMimeType();
+              finalUrls8.push(mime8.indexOf('image/') === 0
+                ? 'https://drive.google.com/thumbnail?id=' + nid8 + '&sz=w800'
+                : 'https://drive.google.com/file/d/' + nid8 + '/view');
+            } catch(e8) {
+              Logger.log('[resolveFormUpload] copy error: ' + e8.message);
+              finalUrls8.push(u);
+            }
+          });
+
+          result = { status: 'ok', url: finalUrls8.join(','), count: finalUrls8.length, uploadId: uploadId6 };
+        }
+
+      } else {
+        throw new Error('Action tidak dikenal: ' + action);
+      }
+    }
+
+    var out = JSON.stringify(result);
+    if (cb) return ContentService.createTextOutput(cb + '(' + out + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+    return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    var errOut = JSON.stringify({ status: 'error', message: err.message });
+    if (cb) return ContentService.createTextOutput(cb + '(' + errOut + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+    return ContentService.createTextOutput(errOut).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ── replaceAllRows ─────────────────────────────────────────────
+function replaceAllRows(sheetName, headers, rows) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh) throw new Error('Sheet "' + sheetName + '" tidak ditemukan');
+
+  if (headers && headers.length > 0)
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  var lastRow = sh.getLastRow();
+  if (lastRow > 1) sh.deleteRows(2, lastRow - 1);
+
+  if (rows && rows.length > 0) {
+    var numCols = headers ? headers.length : rows[0].length;
+    var normalized = rows.map(function(row) {
+      var r = [];
+      for (var c = 0; c < numCols; c++)
+        r.push(row[c] !== undefined && row[c] !== null ? String(row[c]) : '');
+      return r;
+    });
+    sh.getRange(2, 1, normalized.length, numCols).setValues(normalized);
+  }
+
+  return rows ? rows.length : 0;
+}
+
+// ── dedupSheet ────────────────────────────────────────────────
+// Bersihkan sheet dari:
+//   1. Baris dengan delete_flag = 'TRUE'   (dihapus dari web)
+//   2. Baris duplikat id — dari semua baris ber-id sama,
+//      hapus semua KECUALI yang paling bawah (= append terbaru)
+// Baris tanpa kolom id / delete_flag dibiarkan saja.
+function dedupSheet(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh) throw new Error('Sheet "' + sheetName + '" tidak ditemukan');
+
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var lastCol    = sh.getLastColumn();
+  var headers    = sh.getRange(1, 1, 1, lastCol).getValues()[0]
+                     .map(function(h) { return h.toString().trim(); });
+  var idColIdx   = headers.indexOf('id');
+  var flagColIdx = headers.indexOf('delete_flag');
+
+  // Baca semua baris data sekaligus (efisien: 1 API call)
+  var allData = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+  var toDelete = [];
+  var seenIds  = {};
+
+  // Pass 1 — bawah ke atas: catat posisi terbawah untuk setiap id
+  if (idColIdx >= 0) {
+    for (var i = allData.length - 1; i >= 0; i--) {
+      var rowId = allData[i][idColIdx] ? allData[i][idColIdx].toString().trim() : '';
+      if (rowId === '') continue;
+      if (seenIds[rowId] === undefined) seenIds[rowId] = i;
+    }
+  }
+
+  // Pass 2 — atas ke bawah: tandai yang perlu dihapus
+  for (var j = 0; j < allData.length; j++) {
+    var flagVal = (flagColIdx >= 0) ? allData[j][flagColIdx].toString().trim().toUpperCase() : '';
+    var rowIdJ  = (idColIdx  >= 0) ? allData[j][idColIdx].toString().trim()                 : '';
+
+    if (flagVal === 'TRUE') { toDelete.push(j); continue; }
+    if (rowIdJ !== '' && seenIds[rowIdJ] !== undefined && seenIds[rowIdJ] !== j)
+      toDelete.push(j);
+  }
+
+  if (toDelete.length === 0) return 0;
+
+  // Hapus dari bawah ke atas agar nomor baris tidak bergeser
+  toDelete.sort(function(a, b) { return b - a; });
+  for (var k = 0; k < toDelete.length; k++)
+    sh.deleteRow(toDelete[k] + 2); // +2: baris data mulai dari sheet row 2
+
+  return toDelete.length;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function getOrCreateHeaders(sheet, shName) {
+  var vals = sheet.getDataRange().getValues();
+  if (vals.length > 0 && vals[0].some(function(c) { return c !== ''; }))
+    return vals[0].map(function(h) { return h.toString().trim(); });
+  var def = SHEET_HEADERS[shName];
+  if (!def) throw new Error('Tidak ada definisi header untuk ' + shName);
+  sheet.getRange(1, 1, 1, def.length).setValues([def]);
+  return def;
+}
+function buildRow(headers, obj) {
+  return headers.map(function(h) { var v = obj[h]; return (v === undefined || v === null) ? '' : v.toString(); });
+}
+function deleteByKey(sheet, kIdx, keyVal) {
+  var all = sheet.getDataRange().getValues(); var del = 0;
+  for (var i = all.length - 1; i >= 1; i--) {
+    if (String(all[i][kIdx]).trim() === String(keyVal).trim()) { sheet.deleteRow(i + 1); del++; }
+  }
+  return del;
+}
+
+// ── getSheetData ──────────────────────────────────────────────
+// Otomatis skip baris delete_flag=TRUE saat data dibaca client.
+function getSheetData(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Sheet "' + sheetName + '" tidak ditemukan');
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  var headers = rows[0].map(function(h) { return h.toString().trim(); });
+  var flagIdx = headers.indexOf('delete_flag');
+  var result  = [];
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    var isEmpty = true;
+    for (var k = 0; k < row.length; k++) { if (row[k] !== '' && row[k] !== null) { isEmpty = false; break; } }
+    if (isEmpty) continue;
+    // Skip baris yang sudah ditandai dihapus
+    if (flagIdx >= 0 && row[flagIdx] && row[flagIdx].toString().trim().toUpperCase() === 'TRUE') continue;
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      var cv = normalizeValue(headers[j], row[j]);
+      if (headers[j] === 'proker_id') cv = normalizeId(cv);
+      obj[headers[j]] = cv;
+    }
+    result.push(obj);
+  }
+  return result;
+}
+
+function normalizeId(val) {
+  if (val === '' || val === null || val === undefined) return '';
+  var n = parseInt(val.toString().trim(), 10);
+  if (isNaN(n)) return val.toString().trim();
+  return n < 10 ? '0' + n : '' + n;
+}
+function normalizeValue(header, val) {
+  if (val === '' || val === null || val === undefined) return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    if (TIME_COLUMNS.indexOf(header) !== -1) return toHHMM(val);
+    if (DATE_COLUMNS.indexOf(header) !== -1) return toYMD(val);
+    return val.toString();
+  }
+  var str = val.toString().trim();
+  if (TIME_COLUMNS.indexOf(header) !== -1 && str !== '') { var pt = tryParseDate(str); if (pt) return toHHMM(pt); }
+  if (DATE_COLUMNS.indexOf(header) !== -1 && str !== '') { var pd = tryParseDate(str); if (pd) return toYMD(pd); }
+  return str;
+}
+function toHHMM(d) { var h=String(d.getHours()),m=String(d.getMinutes()); return (h.length<2?'0'+h:h)+':'+(m.length<2?'0'+m:m); }
+function toYMD(d) { var y=String(d.getFullYear()),m=String(d.getMonth()+1),dd=String(d.getDate()); return y+'-'+(m.length<2?'0'+m:m)+'-'+(dd.length<2?'0'+dd:dd); }
+function tryParseDate(str) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) { var p=str.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+  if (/^\d{1,2}:\d{2}$/.test(str)) { var tp=str.split(':'),d=new Date(1899,11,30); d.setHours(+tp[0],+tp[1],0,0); return d; }
+  var dmy=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if(dmy) return new Date(+dmy[3],+dmy[2]-1,+dmy[1]);
+  var a=new Date(str); return isNaN(a.getTime())?null:a;
+}
+// ============================================================
+//  DRIVE UPLOAD — v10
+//  Folder root : 1g04amE7SlQbYV-g7al5JMjLE4XidJ5vy
+//  Subfolder otomatis dibuat jika belum ada:
+//    JCOSASI_Assets/
+//      pengurus/        ← foto profil
+//      pengumuman/      ← poster & dokumen
+//      dokumentasi/     ← foto kegiatan
+//
+//  doPost menerima JSON:
+//    { token, action:'uploadFile', folder, filename, mimeType, base64 }
+//    { token, action:'uploadFromUrl', folder, filename, url }
+// ============================================================
+
+var ROOT_FOLDER_ID = '1p6w4EaF4pSWJO_hYssxM2ZDoP1Q5CRnR';
+
+// Subfolder name per konteks
+var SUBFOLDER_MAP = {
+  pengurus:      'pengurus',
+  pengumuman:    'pengumuman',
+  dokumentasi:   'dokumentasi',
+};
+
+/**
+ * Konversi berbagai format URL Google Drive ke direct download URL
+ * Mendukung: /view, /edit, share link, uc?id=, thumbnail URL
+ */
+function toDriveDirectUrl(url) {
+  if (!url) return url;
+
+  // Sudah direct download
+  if (url.indexOf('drive.usercontent.google.com/uc') !== -1 ||
+      url.indexOf('export=download') !== -1) {
+    return url;
+  }
+
+  // Format: drive.google.com/file/d/FILE_ID/...
+  var m1 = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1) {
+    return 'https://drive.usercontent.google.com/uc?id=' + m1[1] + '&export=download';
+  }
+
+  // Format: drive.google.com/open?id=FILE_ID
+  var m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2) {
+    return 'https://drive.usercontent.google.com/uc?id=' + m2[1] + '&export=download';
+  }
+
+  // Format thumbnail: thumbnail?id=FILE_ID
+  var m3 = url.match(/thumbnail\?id=([a-zA-Z0-9_-]+)/);
+  if (m3) {
+    return 'https://drive.usercontent.google.com/uc?id=' + m3[1] + '&export=download';
+  }
+
+  return url;
+}
+
+/** Ambil atau buat subfolder di dalam root */
+function getOrCreateSubfolder(subName) {
+  var root = DriveApp.getFolderById(ROOT_FOLDER_ID);
+  var it   = root.getFoldersByName(subName);
+  if (it.hasNext()) return it.next();
+  return root.createFolder(subName);
+}
+
+/** Buat link publik (anyone with link can view) dan kembalikan URL thumbnail/direct */
+function makePublicAndGetUrl(file) {
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var id = file.getId();
+  var mt = file.getMimeType();
+  // Untuk gambar → thumbnail URL yang bisa langsung ditampilkan di <img>
+  if (mt.indexOf('image/') === 0) {
+    return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w800';
+  }
+  // Untuk PDF / lainnya → link view biasa
+  return 'https://drive.google.com/file/d/' + id + '/view';
+}
+
+/** doPost — menerima upload file via fetch dengan CORS header */
+function doPost(e) {
+  try {
+    var body   = JSON.parse(e.postData.contents);
+    var token  = body.token  || '';
+    var action = body.action || '';
+
+    if (token !== WRITE_TOKEN) {
+      return jsonResponseCors({ status: 'error', message: 'Unauthorized' });
+    }
+
+    var folder   = SUBFOLDER_MAP[body.folder] || body.folder || 'pengumuman';
+    var subFolder= getOrCreateSubfolder(folder);
+    var filename = body.filename || ('file_' + Date.now());
+
+    if (action === 'uploadFile') {
+      // Upload dari base64
+      var decoded = Utilities.base64Decode(body.base64);
+      var blob    = Utilities.newBlob(decoded, body.mimeType || 'application/octet-stream', filename);
+      var file    = subFolder.createFile(blob);
+      var url     = makePublicAndGetUrl(file);
+      return jsonResponseCors({ status: 'ok', url: url, id: file.getId(), name: file.getName() });
+
+    } else if (action === 'uploadFromUrl') {
+      var directUrl = toDriveDirectUrl(body.url);
+      var resp = UrlFetchApp.fetch(directUrl, { muteHttpExceptions: true, followRedirects: true });
+      if (resp.getResponseCode() !== 200) {
+        throw new Error('Gagal fetch URL: HTTP ' + resp.getResponseCode() + ' — ' + directUrl);
+      }
+      var blob2   = resp.getBlob().setName(filename);
+      var file2   = subFolder.createFile(blob2);
+      var url2    = makePublicAndGetUrl(file2);
+      return jsonResponseCors({ status: 'ok', url: url2, id: file2.getId(), name: file2.getName() });
+
+    } else if (action === 'uploadFileMultipart') {
+      // Terima file dari form multipart (iframe POST)
+      var uploadId3 = body.uploadId || ('uid_' + Date.now());
+      var folder4   = SUBFOLDER_MAP[body.folder] || body.folder || 'dokumentasi';
+      var subDir4   = getOrCreateSubfolder(folder4);
+      var fname4    = body.filename || ('file_' + Date.now());
+
+      // Ambil file dari postData (multipart)
+      var blob6;
+      if (e.postData && e.postData.type && e.postData.type.indexOf('multipart') >= 0) {
+        // Parse multipart — ambil blob file
+        blob6 = e.postData.getBlob ? e.postData.getBlob() : null;
+        if (!blob6) throw new Error('Tidak bisa ambil file dari request');
+        blob6 = blob6.setName(fname4);
+      } else if (body.base64) {
+        var dec6 = Utilities.base64Decode(body.base64);
+        blob6    = Utilities.newBlob(dec6, body.mimeType||'image/jpeg', fname4);
+      } else {
+        throw new Error('Tidak ada file dalam request');
+      }
+
+      var file6  = subDir4.createFile(blob6);
+      var url6   = makePublicAndGetUrl(file6);
+
+      // Tulis hasil ke sheet upload_result agar JS bisa polling
+      var ss6 = SpreadsheetApp.getActiveSpreadsheet();
+      var sh6 = ss6.getSheetByName('upload_result');
+      if (!sh6) sh6 = ss6.insertSheet('upload_result');
+      getOrCreateHeaders(sh6, 'upload_result');
+      sh6.appendRow([uploadId3, 'ok', url6, '', new Date().toISOString()]);
+
+      return jsonResponseCors({ status: 'ok', url: url6, uploadId: uploadId3 });
+
+    } else {
+      throw new Error('Action tidak dikenal: ' + action);
+    }
+
+  } catch (err) {
+    return jsonResponseCors({ status: 'error', message: err.message });
+  }
+}
+
+function jsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** jsonResponse dengan CORS header — untuk doPost dipanggil via fetch browser */
+function jsonResponseCors(obj) {
+  var output = ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+  // Catatan: GAS Web App tidak bisa set header arbitrary via ContentService
+  // CORS harus diaktifkan via deploy setting "Execute as: Me, Access: Anyone"
+  return output;
+}
+
+
+// ============================================================
+//  GOOGLE FORM UPLOAD HANDLER
+//  Trigger: From form → On form submit
+//  Form: https://docs.google.com/forms/d/e/1FAIpQLSejpViQvqOIUojjQxG9KpkUBFwKEcNREVt4wKN5UoGqOlcd8w/viewform
+//  Entry upload_id: entry.1781150924
+// ============================================================
+
+/**
+ * Dipanggil otomatis saat Google Form di-submit.
+ * Ambil file yang diupload → salin ke folder Drive JCOSASI → tulis URL ke sheet upload_result.
+ * JS di browser polling sheet upload_result setiap 2 detik untuk ambil URL.
+ */
+function onFormUpload(e) {
+  try {
+    var responses = e.response.getItemResponses();
+
+    // Cari upload_id dan file dari response
+    var uploadId  = '';
+    var fileUrls  = [];
+
+    responses.forEach(function(r) {
+      var title = r.getItem().getTitle().toLowerCase().trim();
+      var val   = r.getResponse();
+
+      if (title === 'upload_id') {
+        uploadId = String(val || '').trim();
+      } else if (title === 'file' || title === 'foto' || title === 'dokumen') {
+        // File upload question mengembalikan array URL Drive
+        if (Array.isArray(val)) {
+          val.forEach(function(v) { if (v) fileUrls.push(String(v)); });
+        } else if (val) {
+          fileUrls.push(String(val));
+        }
+      }
+    });
+
+    if (!uploadId) {
+      Logger.log('[onFormUpload] upload_id kosong, skip');
+      return;
+    }
+
+    if (!fileUrls.length) {
+      // Tulis error ke upload_result
+      _writeUploadResult(uploadId, 'error', '', 'Tidak ada file yang diupload');
+      return;
+    }
+
+    // Proses setiap file — salin ke folder Drive JCOSASI
+    var resultUrls = [];
+    fileUrls.forEach(function(driveUrl) {
+      try {
+        // Ambil file ID dari URL Drive
+        var m = driveUrl.match(/id=([a-zA-Z0-9_-]+)/);
+        if (!m) m = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (!m) { resultUrls.push(driveUrl); return; }
+
+        var fileId   = m[1];
+        var srcFile  = DriveApp.getFileById(fileId);
+        var ext8     = srcFile.getName().split('.').pop() || 'jpg';
+        // Nama file: proker_dokumentasi_{uploadId}_{nomor}_{timestamp}.{ext}
+        var idx8     = resultUrls.length + 1;
+        var ts8      = Date.now() + idx8;
+        var newName8 = 'proker_dokumentasi_' + uploadId + '_' + idx8 + '_' + ts8 + '.' + ext8;
+        var folder   = getOrCreateSubfolder('dokumentasi');
+        var newFile  = srcFile.makeCopy(newName8, folder);
+        newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+        var mime = newFile.getMimeType();
+        var nid  = newFile.getId();
+        var url  = mime.indexOf('image/') === 0
+          ? 'https://drive.google.com/thumbnail?id=' + nid + '&sz=w800'
+          : 'https://drive.google.com/file/d/' + nid + '/view';
+
+        resultUrls.push(url);
+      } catch (err2) {
+        Logger.log('[onFormUpload] error copy file: ' + err2.message);
+        resultUrls.push(driveUrl); // fallback ke URL asli
+      }
+    });
+
+    var finalUrl = resultUrls.join(',');
+    _writeUploadResult(uploadId, 'ok', finalUrl, '');
+    Logger.log('[onFormUpload] OK — uploadId: ' + uploadId + ', url: ' + finalUrl);
+
+  } catch (err) {
+    Logger.log('[onFormUpload] Error: ' + err.message);
+    if (e && e.response) {
+      try {
+        var uid = '';
+        e.response.getItemResponses().forEach(function(r) {
+          if (r.getItem().getTitle().toLowerCase() === 'upload_id') uid = String(r.getResponse());
+        });
+        if (uid) _writeUploadResult(uid, 'error', '', err.message);
+      } catch(_) {}
+    }
+  }
+}
+
+function _writeUploadResult(uploadId, status, url, message) {
+  var ss  = SpreadsheetApp.getActiveSpreadsheet();
+  var sh  = ss.getSheetByName('upload_result');
+  if (!sh) sh = ss.insertSheet('upload_result');
+  // Pastikan header ada
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(['upload_id','status','url','message','ts']);
+  }
+  sh.appendRow([uploadId, status, url, message, new Date().toISOString()]);
+}
