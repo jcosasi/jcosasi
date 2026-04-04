@@ -381,6 +381,19 @@ function respond(status, message) {
 </div>
 
 <div class="toast-c" id="toastC"></div>
+
+<!-- Mobile bottom navigation -->
+<nav class="mob-nav" id="mobNav">
+  <button class="mob-nav-btn" id="mnDataset" onclick="mobPanel('sidebar')">
+    <span class="mob-nav-ico">📂</span>Dataset
+  </button>
+  <button class="mob-nav-btn active" id="mnTabel" onclick="mobPanel('main')">
+    <span class="mob-nav-ico">📋</span>Tabel
+  </button>
+  <button class="mob-nav-btn" id="mnTemplate" onclick="mobPanel('right')">
+    <span class="mob-nav-ico">✉️</span>Template
+  </button>
+</nav>
 <script src="app_mail_blast.js"></script>
 <script>
 /* Sakura animasi pada login screen — identik initLoadingSakura */

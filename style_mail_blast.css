@@ -385,3 +385,166 @@ th.resizing .col-resize-handle::after {
 th.resizing { background: var(--pp) !important; }
 td { overflow: hidden; }
 td input { min-width: 0; }
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — Mobile (max 768px)
+   Layout: bottom nav + single panel view
+   Panel aktif dikontrol JS via .mob-active
+═══════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+
+  /* ── Header ── */
+  header {
+    padding: 0 14px;
+    height: 50px;
+  }
+  .logo { font-size: 1rem; gap: 7px; }
+  .logo-icon { width: 26px; height: 26px; font-size: 12px; }
+  .hdr-right { gap: 6px; }
+  .badge, .badge-ok { display: none; }
+  .hdr-right .btn { padding: 4px 10px; font-size: .7rem; }
+
+  /* ── Layout: stack panels, hanya 1 terlihat ── */
+  .app-layout {
+    display: block;
+    height: calc(100vh - 50px - 54px); /* minus header & bottom nav */
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sidebar,
+  .main-panel,
+  .right-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    border: none;
+  }
+
+  /* Panel yang aktif ditampilkan */
+  .sidebar.mob-active,
+  .main-panel.mob-active,
+  .right-panel.mob-active {
+    display: flex;
+  }
+
+  /* ── Bottom navigation ── */
+  .mob-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 54px;
+    background: rgba(255,255,255,.97);
+    backdrop-filter: blur(12px);
+    border-top: 1.5px solid var(--gl);
+    display: flex;
+    z-index: 200;
+  }
+  .mob-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    font-family: var(--fb);
+    font-size: .58rem;
+    font-weight: 600;
+    color: var(--gm);
+    cursor: pointer;
+    transition: color var(--t);
+    letter-spacing: .04em;
+    position: relative;
+  }
+  .mob-nav-btn .mob-nav-ico { font-size: 1.1rem; line-height: 1; }
+  .mob-nav-btn.active { color: var(--pm); }
+  .mob-nav-btn.active::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 20%; right: 20%;
+    height: 2px;
+    background: var(--pm);
+    border-radius: 0 0 3px 3px;
+  }
+
+  /* ── Sidebar panel ── */
+  .sidebar-hdr { padding: 14px 14px 10px; }
+  .sidebar-foot { padding: 10px; gap: 6px; }
+  .sidebar-foot .btn { font-size: .75rem; }
+  .ds-acts { opacity: 1; } /* selalu tampil di mobile */
+
+  /* ── Main panel ── */
+  .panel-hdr {
+    padding: 10px 12px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .panel-acts {
+    width: 100%;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .panel-acts .btn { font-size: .68rem; padding: 5px 10px; }
+
+  /* Send button full width di mobile */
+  .panel-acts #sendBtn {
+    flex: 1;
+    justify-content: center;
+    min-width: 120px;
+  }
+
+  /* ── Right panel ── */
+  .right-panel {
+    border-left: none;
+    border-top: none;
+  }
+  .tpl-area { padding: 12px; gap: 9px; }
+  textarea { height: 130px; }
+
+  /* ── Modals ── */
+  .mc {
+    width: 94vw;
+    padding: 20px 16px;
+    max-height: 86vh;
+    border-radius: var(--rs);
+  }
+  .col-row {
+    grid-template-columns: 1fr auto auto;
+  }
+  .col-row > input:nth-child(2) { grid-column: 1 / -1; } /* placeholder input full width */
+
+  /* ── Toast ── */
+  .toast-c {
+    bottom: 62px; /* di atas bottom nav */
+    right: 12px;
+    left: 12px;
+  }
+  .toast { max-width: 100%; }
+
+  /* ── Column resize: nonaktifkan di mobile (pakai scroll saja) ── */
+  .col-resize-handle { display: none; }
+
+  /* ── Preview modal nav ── */
+  .prev-nav { gap: 8px; }
+
+  /* ── Confirm grid ── */
+  .confirm-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── Tablet (769px – 1024px): sidebar collapse ── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .app-layout { grid-template-columns: 200px 1fr 280px; }
+  .mob-nav { display: none; }
+}
+
+/* Desktop: pastikan mob-nav tidak tampil */
+@media (min-width: 769px) {
+  .mob-nav { display: none; }
+  .sidebar, .main-panel, .right-panel { display: flex !important; position: relative; }
+}

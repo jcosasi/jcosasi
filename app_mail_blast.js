@@ -179,6 +179,7 @@ function initApp() {
   renderDs();
   if (S.active && S.datasets[S.active]) setDs(S.active);
   else updateChips();
+  initMobile();
 }
 
 // ── ACTIVE DATASET TEMPLATE ────────────────────
@@ -840,21 +841,34 @@ function showConfirm() {
 
 async function startSend() {
   closeM('mConfirm'); tab('stats');
+  if (isMobile()) mobPanel('right');
   saveTpl();
   const ds       = S.datasets[S.active];
   const emailKey = getEmailKey();
   const delay    = S.cfg.delay * 1000;
-  // Kirim hanya baris yang dipilih dan valid
   const toSend   = getRowsToSend();
   const allRows  = ds.rows;
   document.getElementById('sendBtn').disabled = true;
   log('Mulai kirim: '+ds.name+' ('+toSend.length+' penerima)','info');
+
+  // Ambil template MENTAH (sebelum placeholder diganti) untuk dokumentasi
+  const _now = new Date();
+  const waktuMulai = _now.getFullYear() + '-'
+    + String(_now.getMonth()+1).padStart(2,'0') + '-'
+    + String(_now.getDate()).padStart(2,'0') + ' '
+    + String(_now.getHours()).padStart(2,'0') + ':'
+    + String(_now.getMinutes()).padStart(2,'0');
+  const tplMentah  = getDsTpl();
+  const subjekDok  = tplMentah.subj || '';
+  const bodyDok    = tplMentah.body || '';
+
   let sent=0, fail=0, skip=0;
+  const emailBerhasil = [];
+  const emailGagal    = [];
 
   for (let i=0; i<toSend.length; i++) {
     const row      = toSend[i];
     const emailVal = (row[emailKey] || '').trim();
-    // Cari index asli di ds.rows untuk update status
     const origIdx  = allRows.indexOf(row);
 
     if (S.cfg.skip && row._status==='sent') { skip++; prog(sent,fail,skip,toSend.length); continue; }
@@ -868,14 +882,17 @@ async function startSend() {
       const d = await api({ action:'send', to:emailVal, subject, body });
       if (d.status==='success') {
         if (origIdx>=0) allRows[origIdx]._status='sent';
-        sent++; log(`✓ ${emailVal}`,'ok');
+        sent++; emailBerhasil.push(emailVal);
+        log(`✓ ${emailVal}`,'ok');
       } else {
         if (origIdx>=0) allRows[origIdx]._status='failed';
-        fail++; log(`✕ ${emailVal} — ${d.message}`,'err');
+        fail++; emailGagal.push(emailVal);
+        log(`✕ ${emailVal} — ${d.message}`,'err');
       }
     } catch(e) {
       if (origIdx>=0) allRows[origIdx]._status='failed';
-      fail++; log(`✕ ${emailVal} — ${e.message}`,'err');
+      fail++; emailGagal.push(emailVal);
+      log(`✕ ${emailVal} — ${e.message}`,'err');
     }
 
     save(); renderTbl(); prog(sent,fail,skip,toSend.length);
@@ -885,6 +902,31 @@ async function startSend() {
   document.getElementById('sendBtn').disabled = false;
   log(`Selesai. ${sent} terkirim · ${fail} gagal · ${skip} dilewati`,'info');
   toast(`Selesai! ${sent} terkirim, ${fail} gagal`, sent>0?'success':'error');
+
+  // Simpan dokumentasi ke sheet dokumentasi_email (hanya jika ada yang dikirim)
+  if (sent > 0 || fail > 0) {
+    try {
+      await api({
+        action:  'insert',
+        sheet:   'dokumentasi_email',
+        payload: JSON.stringify({
+          rows: [{
+            waktu_kirim:      waktuMulai,
+            dataset:          ds.name || '',
+            subjek:           subjekDok,
+            isi_email:        bodyDok,
+            jumlah_berhasil:  sent,
+            jumlah_gagal:     fail,
+            email_berhasil:   emailBerhasil.join(', '),
+            email_gagal:      emailGagal.join(', '),
+          }]
+        })
+      });
+      log('📋 Dokumentasi tersimpan ke sheet dokumentasi_email','info');
+    } catch(e) {
+      log('⚠ Gagal simpan dokumentasi: ' + e.message,'err');
+    }
+  }
 }
 
 function prog(s,f,sk,t) { const d=s+f+sk,pct=t?Math.round(d/t*100):0; document.getElementById('pFill').style.width=pct+'%'; document.getElementById('pPct').textContent=pct+'%'; document.getElementById('pStat').textContent=`${d}/${t} · ${s} terkirim · ${f} gagal`; updStats(); }
@@ -1059,7 +1101,38 @@ async function doImportSheets() {
 
 function parseCSVLine(line) { const r=[];let cur='',inQ=false; for(const ch of line){if(ch==='"')inQ=!inQ;else if(ch===','&&!inQ){r.push(cur);cur='';}else cur+=ch;} r.push(cur); return r; }
 
-// ── UI HELPERS ─────────────────────────────────
+// ── MOBILE PANEL SWITCHING ──────────────────────
+function isMobile() { return window.innerWidth <= 768; }
+
+function mobPanel(which) {
+  if (!isMobile()) return;
+  const map = {
+    sidebar: { el: document.querySelector('.sidebar'),     btn: 'mnDataset'  },
+    main:    { el: document.querySelector('.main-panel'),  btn: 'mnTabel'    },
+    right:   { el: document.querySelector('.right-panel'), btn: 'mnTemplate' },
+  };
+  Object.entries(map).forEach(([key, { el, btn }]) => {
+    const active = key === which;
+    if (el) el.classList.toggle('mob-active', active);
+    const b = document.getElementById(btn);
+    if (b) b.classList.toggle('active', active);
+  });
+}
+
+function initMobile() {
+  if (isMobile()) {
+    // Default tampilkan main panel
+    mobPanel('main');
+  } else {
+    // Desktop: hapus mob-active agar CSS desktop yang berlaku
+    ['sidebar','main-panel','right-panel'].forEach(cls => {
+      const el = document.querySelector('.' + cls);
+      if (el) el.classList.remove('mob-active');
+    });
+  }
+}
+
+window.addEventListener('resize', initMobile);
 function tab(n) {
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',['tpl','stats','cfg'][i]===n));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.toggle('active',p.id==='tab-'+n));
