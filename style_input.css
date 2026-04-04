@@ -345,7 +345,7 @@ body{font-family:var(--fb);background:var(--ow);color:var(--ch);min-height:100vh
 .mov.open .modal{transform:none}
 .m-h{display:flex;align-items:center;gap:9px;margin-bottom:18px}
 .m-t{font-weight:800;font-size:1.02rem;flex:1}
-.m-x{width:27px;height:27px;border-radius:7px;border:1.5px solid var(--gl);background:transparent;cursor:pointer;font-size:.9rem;color:var(--gm);display:flex;align-items:center;justify-content:center;transition:background var(--t)}.m-x:hover{background:var(--ow)}
+.m-x{width:27px;height:27px;border-radius:7px;border:1.5px solid rgba(220,38,38,.25);background:rgba(220,38,38,.07);cursor:pointer;font-size:.9rem;color:var(--err);display:flex;align-items:center;justify-content:center;transition:all var(--t)}.m-x:hover{background:rgba(220,38,38,.15);border-color:rgba(220,38,38,.4)}
 .m-f{display:flex;gap:9px;justify-content:flex-end;margin-top:18px;padding-top:13px;border-top:1.5px solid var(--gl)}
 
 /* TOAST */

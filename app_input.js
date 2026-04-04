@@ -2043,8 +2043,7 @@ function showPage(p) {
 }
 function openModal(id)  { document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
-document.querySelectorAll('.mov').forEach(o => o.addEventListener('click', e => { if(e.target===o) closeModal(o.id); }));
-document.addEventListener('keydown', e => { if(e.key==='Escape') document.querySelectorAll('.mov.open').forEach(m=>closeModal(m.id)); });
+// Modal hanya ditutup via tombol ✕ atau Batal — klik luar tidak menutup modal
 
 function toast(msg, type='') {
   const w=document.getElementById('tw'); const t=document.createElement('div');
