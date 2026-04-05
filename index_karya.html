@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Karya — JCOSASI</title>
+<link rel="icon" type="image/png" href="logo-jcosasi.png"/>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style_karya.css">
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <img src="logo-jcosasi.png" alt="JCOSASI" class="header-logo" onerror="this.style.display='none'">
+      <div class="header-wordmark">
+        <span class="header-org">JCOSASI</span>
+        <span class="header-title">Karya</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="search-wrap">
+        <span class="search-ico">⌕</span>
+        <input type="text" id="searchInp" class="search-inp" placeholder="Cari karya…" oninput="filterKarya()">
+      </div>
+      <button class="btn-icon btn-reload" onclick="loadKarya()" title="Muat ulang">↺</button>
+    </div>
+  </div>
+</header>
+
+<!-- ══ FILTER BAR ══ -->
+<div class="filter-bar">
+  <div class="filter-inner">
+    <div class="filter-types" id="filterTypes">
+      <button class="ftype-btn active" data-type="" onclick="setTypeFilter(this,'')">Semua</button>
+      <button class="ftype-btn" data-type="video" onclick="setTypeFilter(this,'video')">▶ Video</button>
+      <button class="ftype-btn" data-type="lagu" onclick="setTypeFilter(this,'lagu')">♪ Lagu</button>
+      <button class="ftype-btn" data-type="gambar" onclick="setTypeFilter(this,'gambar')">◻ Gambar</button>
+      <button class="ftype-btn" data-type="tulisan" onclick="setTypeFilter(this,'tulisan')">✎ Tulisan</button>
+    </div>
+    <div class="filter-tags" id="filterTagsWrap">
+      <div class="tag-chips" id="tagChips"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MAIN ══ -->
+<main class="main-content">
+  <div class="gallery-header">
+    <div class="gallery-count" id="galleryCount">— karya</div>
+    <div class="gallery-sort">
+      <select class="sort-sel" id="sortSel" onchange="filterKarya()">
+        <option value="terbaru">Terbaru</option>
+        <option value="terlama">Terlama</option>
+        <option value="judul">Judul A–Z</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="karya-grid" id="karyaGrid">
+    <div class="loading-state" id="loadingState">
+      <div class="loading-ring"></div>
+      <div class="loading-txt">Memuat karya…</div>
+    </div>
+  </div>
+
+  <!-- Empty -->
+  <div class="empty-state" id="emptyState" style="display:none">
+    <div class="empty-kanji">空</div>
+    <div class="empty-title">Belum Ada Karya</div>
+    <div class="empty-sub">Belum ada karya yang ditambahkan</div>
+  </div>
+</main>
+
+<!-- ══ LIGHTBOX ══ -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <div class="lb-inner" id="lbInner"></div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="app_karya.js"></script>
+</body>
+</html>
