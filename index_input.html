@@ -91,6 +91,7 @@
     <div class="sb-s">Publik</div>
     <div class="sb-i" onclick="showPage('pengumuman');closeSidebar()" id="nav-pengumuman"><span class="sb-ic">📣</span><span>Pengumuman</span><span class="sb-b" id="badge-pengumuman">0</span></div>
     <div class="sb-i" onclick="showPage('pencapaian');closeSidebar()" id="nav-pencapaian"><span class="sb-ic">🏆</span><span>Pencapaian</span><span class="sb-b" id="badge-pencapaian">0</span></div>
+    <div class="sb-i" onclick="showPage('karya');closeSidebar()" id="nav-karya"><span class="sb-ic">🎨</span><span>Karya</span><span class="sb-b" id="badge-karya">0</span></div>
   </aside>
 
   <main class="main">
@@ -214,6 +215,26 @@
       <div class="peng-grid" id="pengurusGrid">
         <div class="empty"><div class="ei">👤</div><div class="et">Memuat…</div></div>
       </div>
+    </div>
+
+    <!-- KARYA -->
+    <div class="ps" id="page-karya">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+        <strong style="font-size:1.05rem">🎨 Karya</strong>
+        <div class="tb-sp"></div>
+        <select class="fsel" id="karyaTipeFilter" onchange="renderKarya()" style="font-size:.78rem;padding:4px 8px;width:auto">
+          <option value="">Semua Tipe</option>
+          <option value="video">🎬 Video</option>
+          <option value="artikel">📄 Artikel</option>
+          <option value="audio">🎵 Audio</option>
+          <option value="gambar">🖼️ Gambar</option>
+          <option value="dokumen">📁 Dokumen</option>
+          <option value="lainnya">📎 Lainnya</option>
+        </select>
+        <button class="btn-add" onclick="openNewKaryaModal()">+ Tambah Karya</button>
+      </div>
+      <div class="pb-banner" id="karyaBanner">✏️ <strong id="karyaBannerN">0</strong> perubahan belum diupload &nbsp;<button class="btn-save" style="padding:4px 12px;font-size:.73rem" onclick="handleUpload()">Upload</button></div>
+      <div id="karyaContent"><div class="empty"><div class="ei">🎨</div><div class="et">Memuat…</div></div></div>
     </div>
 
     <!-- CHANGELOG -->
@@ -370,7 +391,7 @@
       </div>
       <div class="fhint">Pisahkan beberapa link dengan koma. Klik ☁️ Upload untuk upload file langsung ke Google Drive.</div>
     </div>
-    <div class="m-f"><button class="btn-cancel" onclick="closeModal('sesiModal')">Batal</button><button class="btn-save" onclick="saveSesi()">💾 Simpan</button></div>
+    <div class="m-f"><button class="btn-cancel" onclick="closeModal('sesiModal')">Batal</button><button class="btn-save" id="btnSimpanSesi" onclick="saveSesi()">💾 Simpan</button></div>
   </div>
 </div>
 
@@ -440,6 +461,124 @@
       <div class="up-step" id="upStep">Menunggu…</div>
     </div>
     <div class="m-f"><button class="btn-cancel" onclick="closeModal('uploadModal')">Batal</button><button class="btn-save" id="btnCU" onclick="confirmUpload()">🚀 Upload Sekarang</button></div>
+  </div>
+</div>
+
+<!-- MODAL KARYA -->
+<div class="mov" id="karyaModal">
+  <div class="modal" style="max-width:600px;max-height:92vh;overflow-y:auto">
+    <div class="m-h"><span>🎨</span><span class="m-t" id="karyaMT">Tambah Karya</span><button class="m-x" onclick="closeModal('karyaModal')">✕</button></div>
+    <input type="hidden" id="ek_idx"/>
+
+    <!-- Judul & Tipe -->
+    <div class="g2">
+      <div class="fg" style="grid-column:1/-1">
+        <div class="fl">Judul <span style="color:var(--rd)">*</span></div>
+        <input type="text" class="fi" id="ek_judul" placeholder="Judul karya…"/>
+      </div>
+    </div>
+    <div class="g2">
+      <div class="fg">
+        <div class="fl">Tipe <span style="color:var(--rd)">*</span></div>
+        <select class="fsel" id="ek_tipe" onchange="onKaryaTipeChange()">
+          <option value="video">🎬 Video</option>
+          <option value="artikel">📄 Artikel</option>
+          <option value="audio">🎵 Audio</option>
+          <option value="gambar">🖼️ Gambar</option>
+          <option value="dokumen">📁 Dokumen</option>
+          <option value="lainnya">📎 Lainnya</option>
+        </select>
+      </div>
+      <div class="fg">
+        <div class="fl">Proker <span class="flb">Opsional</span></div>
+        <select class="fsel" id="ek_proker_id">
+          <option value="">— Tidak terkait —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Pembuat & Tanggal -->
+    <div class="g2">
+      <div class="fg">
+        <div class="fl">Pembuat</div>
+        <input type="text" class="fi" id="ek_pembuat" placeholder="Nama pembuat / tim…"/>
+      </div>
+      <div class="fg">
+        <div class="fl">Tanggal</div>
+        <input type="date" class="fi" id="ek_tanggal"/>
+      </div>
+    </div>
+
+    <!-- Deskripsi & Tag -->
+    <div class="fg">
+      <div class="fl">Deskripsi</div>
+      <textarea class="fta" id="ek_deskripsi" style="min-height:60px" placeholder="Deskripsi singkat karya…"></textarea>
+    </div>
+    <div class="fg">
+      <div class="fl">Tag <span class="flb">Pisahkan dengan titik koma ( ; )</span></div>
+      <input type="text" class="fi" id="ek_tag" placeholder="jepang;seni;lomba"/>
+    </div>
+
+    <!-- Media URL — berubah sesuai tipe -->
+    <div class="fg" id="ek_media_section">
+      <div class="fl">Media URL <span id="ek_media_hint_label" style="font-size:.73rem;color:var(--gm)"></span></div>
+      <!-- Mode LINK ONLY (video/audio) -->
+      <div id="ek_media_link_mode">
+        <div class="karya-link-list" id="ek_media_link_list"></div>
+        <div class="karya-link-add-row">
+          <input type="text" class="fi" id="ek_media_link_input" placeholder="Tempel link…" style="flex:1"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addKaryaMediaLink();}"/>
+          <button type="button" class="btn-ar" onclick="addKaryaMediaLink()">+ Tambah</button>
+        </div>
+        <div class="fhint" id="ek_media_link_hint">Tempel link YouTube, Spotify, atau URL lainnya.</div>
+      </div>
+      <!-- Mode UPLOAD (gambar/dokumen/artikel) + link -->
+      <div id="ek_media_upload_mode" style="display:none">
+        <div class="foto-input-wrap">
+          <input type="text" class="fi" id="ek_media_url" placeholder="Link media (pisah koma untuk banyak)…"/>
+          <div class="foto-btn-row">
+            <button type="button" class="btn-ar foto-btn" onclick="addKaryaMediaUrlLink()" title="Tambah link bebas">🔗 Link</button>
+            <button type="button" class="btn-ar foto-btn" onclick="addKaryaMediaGdrive()" title="Masukkan link Google Drive">📁 G‑Drive</button>
+            <button type="button" class="btn-ar foto-btn foto-btn-upload" onclick="uploadFotoFile('ek_media_url')" title="Upload file ke Google Drive">☁️ Upload</button>
+          </div>
+          <div id="ek_media_url_preview" class="foto-preview"></div>
+        </div>
+        <div class="fhint">Upload file artikel, gambar, atau dokumen ke Google Drive.</div>
+      </div>
+    </div>
+
+    <!-- Thumbnail URL -->
+    <div class="fg">
+      <div class="fl">Thumbnail <span class="flb">Opsional — gambar pratinjau kecil</span></div>
+      <div class="foto-input-wrap">
+        <input type="text" class="fi" id="ek_thumbnail_url" placeholder="URL gambar thumbnail…"/>
+        <div class="foto-btn-row">
+          <button type="button" class="btn-ar foto-btn" onclick="addKaryaImgLink('ek_thumbnail_url')" title="Tambah link">🔗 Link</button>
+          <button type="button" class="btn-ar foto-btn" onclick="addKaryaImgGdrive('ek_thumbnail_url')" title="Masukkan link Google Drive">📁 G‑Drive</button>
+          <button type="button" class="btn-ar foto-btn foto-btn-upload" onclick="uploadFotoFile('ek_thumbnail_url')" title="Upload gambar ke Google Drive">☁️ Upload</button>
+        </div>
+        <div id="ek_thumbnail_url_preview" class="foto-preview"></div>
+      </div>
+    </div>
+
+    <!-- Cover URL -->
+    <div class="fg">
+      <div class="fl">Cover <span class="flb">Opsional — gambar sampul besar</span></div>
+      <div class="foto-input-wrap">
+        <input type="text" class="fi" id="ek_cover_url" placeholder="URL gambar cover…"/>
+        <div class="foto-btn-row">
+          <button type="button" class="btn-ar foto-btn" onclick="addKaryaImgLink('ek_cover_url')" title="Tambah link">🔗 Link</button>
+          <button type="button" class="btn-ar foto-btn" onclick="addKaryaImgGdrive('ek_cover_url')" title="Masukkan link Google Drive">📁 G‑Drive</button>
+          <button type="button" class="btn-ar foto-btn foto-btn-upload" onclick="uploadFotoFile('ek_cover_url')" title="Upload gambar ke Google Drive">☁️ Upload</button>
+        </div>
+        <div id="ek_cover_url_preview" class="foto-preview"></div>
+      </div>
+    </div>
+
+    <div class="m-f">
+      <button class="btn-cancel" onclick="closeModal('karyaModal')">Batal</button>
+      <button class="btn-save" id="btnSimpanKarya" onclick="saveKarya()">💾 Simpan</button>
+    </div>
   </div>
 </div>
 

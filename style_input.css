@@ -1218,10 +1218,11 @@ body > .music-toggle { z-index: 510; }
 .fus-dot {
   width:8px; height:8px; border-radius:50%; flex-shrink:0;
 }
-.fus-waiting { background:#F59E0B; animation:pulse 1.2s infinite; }
-.fus-sent    { background:#10B981; }
+.fus-waiting { background:#F59E0B; animation:fus-pulse 1.2s infinite; }
+.fus-sent    { background:#6366F1; animation:fus-pulse 1.8s infinite; }
+.fus-ok      { background:#10B981; }
 .fus-error   { background:#EF4444; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes fus-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 .fus-msg  { flex:1; }
 .fus-cancel {
   background:none; border:none; cursor:pointer;
@@ -1311,4 +1312,104 @@ body > .music-toggle { z-index: 510; }
   .adp { position:fixed;bottom:auto;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);width:360px;max-width:94vw;border-radius:14px;max-height:70vh; }
   .adp.show { transform:translate(-50%,-50%) scale(1);visibility:visible;pointer-events:auto;transition:transform .22s cubic-bezier(.32,1.2,.5,1),visibility 0s 0s; }
   .adp-handle { display:none; }
+}
+/* ═══════════════════════════════════════════════════════
+   KARYA
+═══════════════════════════════════════════════════════ */
+.karya-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap:14px;
+}
+.karya-card {
+  background:#fff;
+  border:1.5px solid var(--gl);
+  border-radius:var(--rs);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  transition:box-shadow .18s,border-color .18s;
+}
+.karya-card:hover { box-shadow:0 4px 18px rgba(107,52,175,.10); border-color:var(--pm); }
+.karya-card-dirty { border-color:#F59E0B; }
+.karya-card-del   { opacity:.45; }
+
+.karya-thumb {
+  width:100%; height:140px;
+  background-size:cover; background-position:center;
+  background-color:var(--ow);
+}
+.karya-thumb-empty {
+  display:flex; align-items:center; justify-content:center;
+  font-size:2.4rem; color:var(--gm);
+}
+
+.karya-body { padding:12px 14px 14px; display:flex; flex-direction:column; gap:7px; flex:1; }
+
+.karya-top  { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.karya-tipe-badge {
+  font-size:.7rem; font-weight:700; border-radius:99px;
+  padding:2px 9px; text-transform:capitalize; letter-spacing:.02em;
+}
+.karya-tipe-video    { background:rgba(239,68,68,.11);   color:#B91C1C; }
+.karya-tipe-artikel  { background:rgba(59,130,246,.11);  color:#1D4ED8; }
+.karya-tipe-audio    { background:rgba(168,85,247,.12);  color:#7C3AED; }
+.karya-tipe-gambar   { background:rgba(16,185,129,.11);  color:#065F46; }
+.karya-tipe-dokumen  { background:rgba(245,158,11,.13);  color:#92400E; }
+.karya-tipe-lainnya  { background:rgba(107,114,128,.10); color:#374151; }
+
+.karya-dirty-badge {
+  font-size:.67rem; font-weight:600; color:#92400E;
+  background:rgba(245,158,11,.14); border-radius:99px; padding:2px 7px;
+}
+
+.karya-judul {
+  font-weight:700; font-size:.92rem; color:var(--dk);
+  line-height:1.35; overflow:hidden;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.karya-meta {
+  display:flex; flex-wrap:wrap; gap:8px;
+  font-size:.72rem; color:var(--gm);
+}
+.karya-desk {
+  font-size:.78rem; color:var(--gd); line-height:1.45;
+}
+.karya-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.karya-tag {
+  font-size:.67rem; background:var(--ow); border:1px solid var(--gl);
+  border-radius:99px; padding:1px 8px; color:var(--gd);
+}
+.karya-actions {
+  display:flex; gap:6px; margin-top:auto; padding-top:4px; flex-wrap:wrap;
+}
+.karya-link-btn {
+  text-decoration:none; display:inline-flex; align-items:center;
+}
+
+/* ── Link list (tipe link-only) ── */
+.karya-link-list { display:flex; flex-direction:column; gap:5px; margin-bottom:8px; }
+.karya-link-item {
+  display:flex; align-items:center; gap:7px;
+  background:var(--ow); border:1px solid var(--gl);
+  border-radius:var(--rx); padding:6px 10px;
+  font-size:.79rem;
+}
+.karya-link-ic  { flex-shrink:0; }
+.karya-link-url {
+  flex:1; color:var(--pd); text-decoration:none;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.karya-link-url:hover { text-decoration:underline; }
+.karya-link-del {
+  background:none; border:none; cursor:pointer;
+  color:var(--gm); font-size:1rem; padding:0 2px; flex-shrink:0;
+}
+.karya-link-del:hover { color:var(--rd); }
+.karya-link-add-row {
+  display:flex; gap:7px; align-items:center;
+}
+
+@media (max-width:480px) {
+  .karya-grid { grid-template-columns:1fr; }
 }

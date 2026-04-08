@@ -49,12 +49,16 @@ function formatDate(str) {
 
 // ── TYPE META ──────────────────────────────────
 const TYPE_META = {
-  video:   { ico:'▶', label:'Video',   badgeClass:'badge-video' },
-  lagu:    { ico:'♪', label:'Lagu',    badgeClass:'badge-lagu'  },
-  gambar:  { ico:'◻', label:'Gambar',  badgeClass:'badge-gambar'},
-  tulisan: { ico:'✎', label:'Tulisan', badgeClass:'badge-tulisan'},
+  video:   { ico:'▶', label:'Video',   badgeClass:'badge-video'   },
+  lagu:    { ico:'♪', label:'Lagu',    badgeClass:'badge-lagu'    },
+  gambar:  { ico:'◻', label:'Gambar',  badgeClass:'badge-gambar'  },
+  tulisan: { ico:'✎', label:'Tulisan', badgeClass:'badge-tulisan' },
+  artikel: { ico:'✎', label:'Artikel', badgeClass:'badge-tulisan' },
 };
 function typeMeta(t) { return TYPE_META[t] || { ico:'◻', label: t||'—', badgeClass:'badge-gambar' }; }
+
+// Normalisasi tipe — 'artikel' diperlakukan sama dengan 'tulisan'
+function normalizeTipe(t) { return t === 'artikel' ? 'tulisan' : (t || ''); }
 
 // ── INIT ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -125,7 +129,7 @@ function filterKarya() {
   const sort = document.getElementById('sortSel').value;
 
   let list = _allKarya.filter(k => {
-    if (_typeFilter && k.tipe !== _typeFilter) return false;
+    if (_typeFilter && normalizeTipe(k.tipe) !== _typeFilter) return false;
     if (_tagFilter) {
       const tags = (k.tag || '').split(';').map(t => t.trim());
       if (!tags.includes(_tagFilter)) return false;
@@ -172,7 +176,7 @@ function renderCard(k, i) {
     : '';
   const placeholderDisplay = imgUrl ? 'none' : 'flex';
 
-  const isVideo = k.tipe === 'video';
+  const isVideo = normalizeTipe(k.tipe) === 'video';
 
   return `<div class="karya-card" onclick="openLightbox('${esc(k.id)}')" style="animation-delay:${delay}ms">
     <div class="card-thumb">
@@ -205,12 +209,13 @@ function openLightbox(id) {
   const lb    = document.getElementById('lightbox');
   const inner = document.getElementById('lbInner');
   const tm    = typeMeta(k.tipe);
+  const tipe  = normalizeTipe(k.tipe);   // 'artikel' → 'tulisan', dll
   const tags  = (k.tag||'').split(';').map(t=>t.trim()).filter(Boolean);
 
   let mediaHtml = '';
   const mediaUrl = k.media_url || '';
 
-  if (k.tipe === 'video') {
+  if (tipe === 'video') {
     const ytId = extractYoutubeId(mediaUrl);
     if (ytId) {
       // Gunakan thumbnail YouTube sebagai preview, bukan iframe langsung.
@@ -242,7 +247,7 @@ function openLightbox(id) {
       mediaHtml = `<div class="lb-media"><iframe src="${esc(src)}" allowfullscreen></iframe></div>`;
     }
 
-  } else if (k.tipe === 'lagu') {
+  } else if (tipe === 'lagu') {
     const coverImg = k.cover_url || k.thumbnail_url || '';
     const driveId  = extractDriveId(mediaUrl);
     const src = driveId ? `https://drive.google.com/uc?export=download&id=${driveId}` : mediaUrl;
@@ -253,25 +258,61 @@ function openLightbox(id) {
       ${src ? `<audio controls autoplay src="${esc(src)}"></audio>` : '<div style="color:rgba(255,255,255,.4);font-size:.8rem">Tidak ada file audio</div>'}
     </div>`;
 
-  } else if (k.tipe === 'gambar') {
+  } else if (tipe === 'gambar') {
     const imgSrc = k.media_url || k.cover_url || k.thumbnail_url || '';
     const driveId = extractDriveId(imgSrc);
-    const src = driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w1200` : imgSrc;
-    mediaHtml = src
-      ? `<div class="lb-media"><img class="lb-img" src="${esc(src)}" alt="${esc(k.judul)}"></div>`
-      : '';
+    const src = driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w1600` : imgSrc;
+    mediaHtml = src ? `
+      <div class="lb-zoom-wrap" id="lbZoomWrap">
+        <div class="lb-zoom-stage" id="lbZoomStage">
+          <img class="lb-zoom-img" id="lbZoomImg" src="${esc(src)}" alt="${esc(k.judul)}" draggable="false">
+        </div>
+        <div class="lb-zoom-controls">
+          <button class="lb-zc-btn" onclick="zoomImg(-0.25)" title="Zoom out">－</button>
+          <span class="lb-zc-level" id="lbZoomLevel">100%</span>
+          <button class="lb-zc-btn" onclick="zoomImg(0.25)" title="Zoom in">＋</button>
+          <button class="lb-zc-btn" onclick="zoomReset()" title="Reset">⤢</button>
+        </div>
+      </div>` : '';
 
-  } else if (k.tipe === 'tulisan') {
-    mediaHtml = `<div class="lb-doc">
-      <div class="lb-doc-content" id="lbDocContent">
-        <div style="color:var(--mute);font-size:.8rem">⏳ Memuat dokumen…</div>
-      </div>
-    </div>`;
+  } else if (tipe === 'tulisan') {
+    const embedSrc = buildDocEmbedUrl(mediaUrl);
+    if (embedSrc) {
+      mediaHtml = `<div class="lb-doc-frame">
+        <div class="lb-doc-header">
+          <div class="lb-doc-title">${esc(k.judul||'Tanpa Judul')}</div>
+          <div class="lb-doc-header-right">
+            ${k.pembuat ? `<span class="lb-doc-by">✎ ${esc(k.pembuat)}</span>` : ''}
+            <div class="lb-doc-zoom-btns">
+              <button class="lb-zc-btn" onclick="zoomDoc(-0.1)" title="Perkecil">－</button>
+              <span class="lb-zc-level" id="lbDocZoomLevel">100%</span>
+              <button class="lb-zc-btn" onclick="zoomDoc(0.1)" title="Perbesar">＋</button>
+              <button class="lb-zc-btn" onclick="zoomDocReset()" title="Reset">⤢</button>
+            </div>
+            <a class="lb-open-btn" href="${esc(mediaUrl)}" target="_blank" rel="noopener">↗ Buka</a>
+          </div>
+        </div>
+        <div class="lb-doc-iframe-wrap" id="lbDocIframeWrap">
+          <iframe
+            id="lbDocIframe"
+            src="${esc(embedSrc)}"
+            class="lb-doc-iframe"
+            frameborder="0"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </div>`;
+    } else {
+      mediaHtml = `<div class="lb-doc-frame lb-doc-nourl">
+        <div class="lb-vf-ico">✎</div>
+        <div class="lb-vf-msg">URL dokumen tidak tersedia</div>
+      </div>`;
+    }
   }
 
   inner.innerHTML = `
     ${mediaHtml}
-    <div class="lb-info">
+    ${tipe !== 'tulisan' ? `<div class="lb-info">
       <div class="lb-info-top">
         <div class="lb-judul">${esc(k.judul||'Tanpa Judul')}</div>
         <span class="lb-type-badge ${tm.badgeClass}">${tm.label}</span>
@@ -284,14 +325,20 @@ function openLightbox(id) {
         ${k.proker_id ? `<span>📋 Proker ${esc(k.proker_id)}</span>` : ''}
         ${mediaUrl ? `<a class="lb-open-btn" href="${esc(mediaUrl)}" target="_blank" rel="noopener">↗ Buka Asli</a>` : ''}
       </div>
-    </div>`;
+    </div>` : ''}`;
+
+  // Tambah class khusus untuk tulisan agar lb-inner mengisi penuh
+  inner.classList.toggle('lb-tulisan', tipe === 'tulisan');
 
   lb.classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  // Untuk tulisan: coba fetch teks
-  if (k.tipe === 'tulisan' && mediaUrl) {
-    loadTextContent(mediaUrl);
+  // Init zoom setelah render
+  if (tipe === 'gambar') {
+    requestAnimationFrame(_initImageZoom);
+  }
+  if (tipe === 'tulisan') {
+    _docZoom = 1;
   }
 }
 
@@ -300,38 +347,63 @@ function closeLightbox(e) {
   const lb = document.getElementById('lightbox');
   lb.classList.remove('open');
   document.body.style.overflow = '';
-  // Stop media
   lb.querySelectorAll('audio,video,iframe').forEach(el => {
     try { el.src = ''; } catch(_) {}
   });
   document.getElementById('lbInner').innerHTML = '';
+  document.getElementById('lbInner').classList.remove('lb-tulisan');
 }
 
-async function loadTextContent(url) {
-  const el = document.getElementById('lbDocContent');
-  if (!el) return;
-  try {
-    const driveId = extractDriveId(url);
-    const fetchUrl = driveId
-      ? `https://drive.google.com/uc?export=download&id=${driveId}`
-      : url;
-    const res  = await fetch(fetchUrl);
-    const text = await res.text();
-    // Deteksi apakah plain text (bukan HTML/binary)
-    if (text.trim().startsWith('<') || text.includes('\x00')) {
-      el.innerHTML = `<div style="color:var(--mute);font-size:.8rem">
-        Format file tidak bisa ditampilkan langsung.<br>
-        <a href="${esc(url)}" target="_blank" style="color:var(--pm)">↗ Buka di tab baru</a>
-      </div>`;
-    } else {
-      el.textContent = text;
-    }
-  } catch(e) {
-    if (el) el.innerHTML = `<div style="color:var(--err);font-size:.8rem">
-      Gagal memuat dokumen: ${esc(e.message)}<br>
-      <a href="${esc(url)}" target="_blank" style="color:var(--pm)">↗ Buka di tab baru</a>
-    </div>`;
+// ── DOCUMENT EMBED URL BUILDER ─────────────────
+// Mengubah berbagai format URL Google Drive/Docs ke URL embed yang bisa di-iframe
+function buildDocEmbedUrl(url) {
+  if (!url) return null;
+
+  // ── Format 1: Google Docs/Sheets/Slides edit URL ──
+  // https://docs.google.com/document/d/FILE_ID/edit?...
+  // https://docs.google.com/spreadsheets/d/FILE_ID/edit?...
+  // https://docs.google.com/presentation/d/FILE_ID/edit?...
+  const docsMatch = url.match(
+    /docs\.google\.com\/(document|spreadsheets|presentation|forms)\/d\/([a-zA-Z0-9_-]+)/
+  );
+  if (docsMatch) {
+    const type = docsMatch[1];
+    const id   = docsMatch[2];
+    const embedPath = {
+      document:     'document',
+      spreadsheets: 'spreadsheets',
+      presentation: 'presentation',
+      forms:        'forms',
+    }[type] || 'document';
+    return `https://docs.google.com/${embedPath}/d/${id}/preview`;
   }
+
+  // ── Format 2: Google Drive file URL ──
+  // https://drive.google.com/file/d/FILE_ID/view?...
+  const driveFileMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveFileMatch) {
+    return `https://drive.google.com/file/d/${driveFileMatch[1]}/preview`;
+  }
+
+  // ── Format 3: drive.google.com/open?id=FILE_ID ──
+  const openMatch = url.match(/drive\.google\.com\/open\?.*id=([a-zA-Z0-9_-]+)/);
+  if (openMatch) {
+    // Gunakan Google Docs Viewer untuk file umum (pdf, docx, dll)
+    return `https://docs.google.com/viewer?url=https://drive.google.com/uc?id=${openMatch[1]}&embedded=true`;
+  }
+
+  // ── Format 4: URL langsung ke file (pdf, docx, txt) ──
+  // Gunakan Google Docs Viewer sebagai viewer universal
+  if (url.match(/\.(pdf|doc|docx|ppt|pptx|xls|xlsx|txt)(\?|$)/i)) {
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+  }
+
+  // ── Fallback: coba Google Docs Viewer ──
+  if (url.startsWith('http')) {
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+  }
+
+  return null;
 }
 
 // ── URL HELPERS ────────────────────────────────
@@ -415,3 +487,180 @@ document.addEventListener('keydown', e => {
     closeLightbox({ target: document.getElementById('lightbox') });
   }
 });
+
+// ══ ZOOM SYSTEM ════════════════════════════════
+
+// ── Image Zoom ─────────────────────────────────
+let _zoom       = 1;
+let _zoomMin    = 0.25;
+let _zoomMax    = 5;
+let _panX       = 0;
+let _panY       = 0;
+let _dragging   = false;
+let _dragStartX = 0;
+let _dragStartY = 0;
+let _dragOriginX= 0;
+let _dragOriginY= 0;
+
+// Pinch-to-zoom state
+let _lastPinchDist = null;
+
+function _applyZoom() {
+  const img = document.getElementById('lbZoomImg');
+  if (!img) return;
+  _zoom = Math.min(_zoomMax, Math.max(_zoomMin, _zoom));
+  img.style.transform = `translate(${_panX}px, ${_panY}px) scale(${_zoom})`;
+  img.style.cursor = _zoom > 1 ? 'grab' : 'default';
+  const el = document.getElementById('lbZoomLevel');
+  if (el) el.textContent = Math.round(_zoom * 100) + '%';
+}
+
+function zoomImg(delta) {
+  _zoom += delta;
+  if (_zoom <= 1) { _panX = 0; _panY = 0; }
+  _applyZoom();
+}
+
+function zoomReset() {
+  _zoom = 1; _panX = 0; _panY = 0;
+  _applyZoom();
+}
+
+function _initImageZoom() {
+  const wrap = document.getElementById('lbZoomWrap');
+  const img  = document.getElementById('lbZoomImg');
+  if (!wrap || !img) return;
+
+  _zoom = 1; _panX = 0; _panY = 0;
+
+  // ── Mouse wheel zoom ──
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    _zoom += delta;
+    if (_zoom <= 1) { _panX = 0; _panY = 0; }
+    _applyZoom();
+  }, { passive: false });
+
+  // ── Mouse drag ──
+  img.addEventListener('mousedown', e => {
+    if (_zoom <= 1) return;
+    e.preventDefault();
+    _dragging   = true;
+    _dragStartX = e.clientX;
+    _dragStartY = e.clientY;
+    _dragOriginX= _panX;
+    _dragOriginY= _panY;
+    img.style.cursor = 'grabbing';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!_dragging) return;
+    _panX = _dragOriginX + (e.clientX - _dragStartX);
+    _panY = _dragOriginY + (e.clientY - _dragStartY);
+    _applyZoom();
+  });
+  document.addEventListener('mouseup', () => {
+    if (!_dragging) return;
+    _dragging = false;
+    const img2 = document.getElementById('lbZoomImg');
+    if (img2) img2.style.cursor = _zoom > 1 ? 'grab' : 'default';
+  });
+
+  // ── Double click to zoom in/reset ──
+  img.addEventListener('dblclick', e => {
+    if (_zoom > 1) { zoomReset(); return; }
+    _zoom = 2.5;
+    // Center zoom pada posisi klik
+    const rect = wrap.getBoundingClientRect();
+    _panX = (rect.width  / 2 - (e.clientX - rect.left)) * (_zoom - 1) / _zoom;
+    _panY = (rect.height / 2 - (e.clientY - rect.top))  * (_zoom - 1) / _zoom;
+    _applyZoom();
+  });
+
+  // ── Touch: pinch-to-zoom + drag ──
+  let _touchPanX = 0, _touchPanY = 0;
+  let _touchOriginX = 0, _touchOriginY = 0;
+  let _touchStartX = 0, _touchStartY = 0;
+
+  wrap.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      _lastPinchDist = _pinchDist(e.touches);
+    } else if (e.touches.length === 1 && _zoom > 1) {
+      _touchStartX  = e.touches[0].clientX;
+      _touchStartY  = e.touches[0].clientY;
+      _touchOriginX = _panX;
+      _touchOriginY = _panY;
+    }
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist  = _pinchDist(e.touches);
+      const ratio = dist / (_lastPinchDist || dist);
+      _lastPinchDist = dist;
+      _zoom *= ratio;
+      if (_zoom <= 1) { _panX = 0; _panY = 0; }
+      _applyZoom();
+    } else if (e.touches.length === 1 && _zoom > 1) {
+      e.preventDefault();
+      _panX = _touchOriginX + (e.touches[0].clientX - _touchStartX);
+      _panY = _touchOriginY + (e.touches[0].clientY - _touchStartY);
+      _applyZoom();
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', () => {
+    _lastPinchDist = null;
+    if (_zoom <= 1) { _panX = 0; _panY = 0; _applyZoom(); }
+  });
+
+  // ── Double tap to zoom ──
+  let _lastTap = 0;
+  wrap.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - _lastTap < 300) {
+      if (_zoom > 1) { zoomReset(); }
+      else { _zoom = 2.5; _applyZoom(); }
+    }
+    _lastTap = now;
+  });
+}
+
+function _pinchDist(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+// ── Doc Zoom (iframe scale via CSS) ────────────
+let _docZoom = 1;
+
+function zoomDoc(delta) {
+  const wrap = document.getElementById('lbDocIframeWrap');
+  const iframe = document.getElementById('lbDocIframe');
+  const lvl = document.getElementById('lbDocZoomLevel');
+  if (!wrap || !iframe) return;
+
+  _docZoom = Math.min(2.5, Math.max(0.5, _docZoom + delta));
+
+  // Scale iframe — perlu set width ke 100%/zoom agar tidak terpotong
+  iframe.style.transform       = `scale(${_docZoom})`;
+  iframe.style.transformOrigin = 'top left';
+  iframe.style.width           = (100 / _docZoom) + '%';
+  iframe.style.height          = (100 / _docZoom) + '%';
+
+  if (lvl) lvl.textContent = Math.round(_docZoom * 100) + '%';
+}
+
+function zoomDocReset() {
+  const wrap   = document.getElementById('lbDocIframeWrap');
+  const iframe = document.getElementById('lbDocIframe');
+  const lvl    = document.getElementById('lbDocZoomLevel');
+  if (!iframe) return;
+  _docZoom = 1;
+  iframe.style.transform = '';
+  iframe.style.width     = '100%';
+  iframe.style.height    = '100%';
+  if (lvl) lvl.textContent = '100%';
+}

@@ -30,6 +30,7 @@ const SH = {
                          'target_audiens','persiapan','cara_daftar','link_pendaftaran',
                          'waktu_kegiatan','lokasi_kegiatan','narahubung_nama','narahubung_kontak',
                          'dokumen_judul','dokumen_url','tag','prioritas','efek_poster','aktif','delete_flag'],
+  karya:               ['id','judul','tipe','pembuat','deskripsi','tag','media_url','thumbnail_url','cover_url','tanggal','proker_id','delete_flag'],
 };
 
 /* ═══════ ID GENERATOR ═══════ */
@@ -43,6 +44,7 @@ function makeRowId(sh, obj) {
     case 'proker_notif_config':return (obj.proker_id||'');
     case 'pencapaian':          return obj.id || '';
     case 'pengumuman':         return (obj.id||'') || (obj.judul||'').slice(0,20)+'_'+(obj.tanggal_publish||'');
+    case 'karya':              return (obj.id||'') || (obj.judul||'').slice(0,20).replace(/\s/g,'_')+'_'+(obj.tanggal||'');
     default:                   return '';
   }
 }
@@ -60,7 +62,7 @@ const PK = {
 
 /* ═══════ STATE ═══════ */
 const S = {
-  dok:[], jad:[], det:[], notif:[], ang:[], peng:[], pgm:[], cap:[],
+  dok:[], jad:[], det:[], notif:[], ang:[], peng:[], pgm:[], cap:[], karya:[],
   changes:[],
   fp:'all',
   today: new Date().toISOString().split('T')[0]
@@ -278,11 +280,12 @@ async function init() {
 
   try {
     _setLtx('Memuat data dari server…');
-    const [dok, jad, det, notif, ang, peng, pgm, cap, lockData] = await Promise.all([
+    const [dok, jad, det, notif, ang, peng, pgm, cap, karya, lockData] = await Promise.all([
       readSh('proker_dokumentasi'), readSh('proker_jadwal'), readSh('proker_detail'),
       readSh('proker_notif_config'), readSh('anggota').catch(() => []), readSh('pengurus'),
       readSh('pengumuman').catch(() => []),
       readSh('pencapaian').catch(() => []),
+      readSh('karya').catch(() => []),
       readSh(LOCK_SHEET).catch(() => [])
     ]);
     // Simpan version dari sheet upload_confirm
@@ -300,6 +303,7 @@ async function init() {
       .map((d,i) => ({...d, _i:i, _m:false}));
     S.pgm   = pgm.filter(d=>d.delete_flag!=='TRUE').map((d,i) => ({...d, _i:i, _m:false, _n:false, _d:false}));
     S.cap   = cap.filter(d=>d.delete_flag!=='TRUE').map((d,i) => ({...d, _i:i, _m:false, _n:false, _d:false}));
+    S.karya = karya.filter(d=>d.delete_flag!=='TRUE').map((d,i)=> ({...d, _i:i, _m:false, _n:false, _d:false}));
     setS('ok', 'Tersinkron');
     _dataReady = true;
     _setLtx('Data siap — masukkan token untuk melanjutkan');
@@ -333,7 +337,7 @@ function buildPK() {
 
 function renderAll() {
   renderOv(); renderDok(); renderJad(); renderDet();
-  renderNotif(); renderAng(); renderPeng(); renderPgm(); renderCap(); updateBadges();
+  renderNotif(); renderAng(); renderPeng(); renderPgm(); renderCap(); renderKarya(); updateBadges();
 }
 
 /* ═══════ OVERVIEW ═══════ */
@@ -734,7 +738,21 @@ function openSesiFromPend(pid, tgl, jam) {
   showPage('dokumentasi'); openModal('sesiModal');
 }
 async function saveSesi() {
-  // Resolve UID foto yang pending dari Google Form sebelum simpan
+  // Blokir simpan jika masih ada foto yang sedang diproses dari Google Form
+  if (_fotoResolvingCount > 0) {
+    toast('⏳ Sedang memproses file yang diupload — harap tunggu hingga selesai sebelum menyimpan', 'warning');
+    const btn = document.getElementById('btnSimpanSesi');
+    if (btn) {
+      btn.style.transition = 'transform .08s ease';
+      btn.style.transform = 'translateX(-6px)';
+      setTimeout(() => { btn.style.transform = 'translateX(6px)'; }, 80);
+      setTimeout(() => { btn.style.transform = 'translateX(-3px)'; }, 160);
+      setTimeout(() => { btn.style.transform = ''; btn.style.transition = ''; }, 240);
+    }
+    return;
+  }
+
+  // Fallback: tangani UID orphaned (polling belum jalan, misal setelah refresh)
   await resolveFotoUids('e_foto');
 
   const i  = document.getElementById('e_idx').value;
@@ -1437,6 +1455,13 @@ function updateBadges() {
   const capN       = S.cap ? S.cap.filter(c=>c._m||c._n||c._d).length : 0;
   const capBadgeEl = document.getElementById('badge-pencapaian');
   if (capBadgeEl) capBadgeEl.textContent = capN;
+  const karyaN     = S.karya ? S.karya.filter(k=>k._m||k._n||k._d).length : 0;
+  const karyaBadge = document.getElementById('badge-karya');
+  if (karyaBadge) karyaBadge.textContent = karyaN;
+  const karyaBannerEl = document.getElementById('karyaBannerN');
+  if (karyaBannerEl) karyaBannerEl.textContent = karyaN;
+  const karyaBannerWrap = document.getElementById('karyaBanner');
+  if (karyaBannerWrap) karyaBannerWrap.style.display = karyaN ? '' : 'none';
   document.getElementById('badge-changelog').textContent   = S.changes.length;
   document.getElementById('st-changes').textContent        = S.changes.length;
   document.getElementById('btnUpload').disabled = S.changes.length === 0;
@@ -1455,7 +1480,7 @@ function renderChangelog() {
     return;
   }
   const ic  = {add:'➕',edit:'✏️',del:'🗑️',upload:'☁️'};
-  const shl = {dokumentasi:'📋 Dokumentasi',jadwal:'📅 Jadwal',proker_detail:'📌 Detail',notif_config:'🔔 Notif',anggota:'👥 Anggota',pengurus:'🎌 Pengurus'};
+  const shl = {dokumentasi:'📋 Dokumentasi',jadwal:'📅 Jadwal',proker_detail:'📌 Detail',notif_config:'🔔 Notif',anggota:'👥 Anggota',pengurus:'🎌 Pengurus',karya:'🎨 Karya'};
   el.innerHTML = '<div class="clog">' + [...S.changes].reverse().map(c =>
     `<div class="cl-i ${c.a==='add'?'add':c.a==='edit'?'edit':c.a==='del'?'del':'upload'}"><span>${ic[c.a]||'?'}</span><div><div class="cl-lb">${c.lbl}</div><div class="cl-sub">${shl[c.sh]||c.sh}</div></div><span class="cl-t">${c.t}</span></div>`
   ).join('') + '</div>';
@@ -1480,6 +1505,7 @@ function handleUpload() {
     notif_config:  '🔔 Notif Config (proker_notif_config)',
     anggota:       '👥 Anggota (anggota)',
     pengurus:      '🎌 Pengurus (pengurus)',
+    karya:         '🎨 Karya (karya)',
   };
   document.getElementById('upSummary').innerHTML =
     `<div style="font-weight:700;margin-bottom:8px">Sheet yang akan diperbarui:</div>` +
@@ -1547,6 +1573,7 @@ async function fetchAndMerge(sheets, onStep) {
     notif_config:  { gas: 'proker_notif_config', key: 'notif' },
     anggota:       { gas: 'anggota',             key: 'ang'   },
     pengurus:      { gas: 'pengurus',            key: 'peng'  },
+    karya:         { gas: 'karya',               key: 'karya' },
   };
 
   for (const sh of sheets) {
@@ -1826,6 +1853,7 @@ async function confirmUpload() {
     S.peng.forEach(p=>p._m=false);
     if(S.pgm){S.pgm.forEach(p=>{p._m=false;p._n=false;});S.pgm=S.pgm.filter(p=>!p._d);}
     if(S.cap){S.cap.forEach(c=>{c._m=false;c._n=false;});S.cap=S.cap.filter(c=>!c._d);}
+    if(S.karya){S.karya.forEach(k=>{k._m=false;k._n=false;});S.karya=S.karya.filter(k=>!k._d);}
     S.changes = [];
     setS('ok', 'Tersinkron ✓');
     setUploadStep('✅ Upload selesai!');
@@ -1853,6 +1881,7 @@ function _shToGas(sh) {
     notif_config:  'proker_notif_config',
     anggota:       'anggota',
     pengurus:      'pengurus',
+    karya:         'karya',
   }[sh] || null;
 }
 
@@ -1873,7 +1902,7 @@ async function uploadShDelta(sh, onStep) {
   if (!gas) throw new Error('Unknown sheet: ' + sh);
 
   const hdr = SH[gas];
-  const shLabel = { dokumentasi:'Dokumentasi', jadwal:'Jadwal', proker_detail:'Detail Proker', notif_config:'Notif Config', anggota:'Anggota', pengurus:'Pengurus', pencapaian:'Pencapaian', pengumuman:'Pengumuman' };
+  const shLabel = { dokumentasi:'Dokumentasi', jadwal:'Jadwal', proker_detail:'Detail Proker', notif_config:'Notif Config', anggota:'Anggota', pengurus:'Pengurus', pencapaian:'Pencapaian', pengumuman:'Pengumuman', karya:'Karya' };
   const lbl = shLabel[sh] || sh;
 
   if (sh === 'pengurus') {
@@ -1893,6 +1922,7 @@ async function uploadShDelta(sh, onStep) {
   else if (sh==='anggota')       srcArr = S.ang;
   else if (sh==='pencapaian')    srcArr = S.cap;
   else if (sh==='pengumuman')    srcArr = S.pgm;
+  else if (sh==='karya')         srcArr = S.karya;
   else throw new Error('Unknown sheet: ' + sh);
 
   // Hanya baris yang benar-benar berubah
@@ -2042,7 +2072,12 @@ function showPage(p) {
   document.getElementById('nav-'+p)?.classList.add('active');
 }
 function openModal(id)  { document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow='';
+  // Reset tombol Simpan Sesi saat modal ditutup (jaga-jaga jika polling masih jalan)
+  if (id === 'sesiModal') _setSimpanable(true);
+}
 // Modal hanya ditutup via tombol ✕ atau Batal — klik luar tidak menutup modal
 
 function toast(msg, type='') {
@@ -2061,10 +2096,11 @@ init();
 */
 async function silentReload() {
   try {
-    const [dok, jad, det, notif, ang, peng, pgm, cap] = await Promise.all([
+    const [dok, jad, det, notif, ang, peng, pgm, cap, karya] = await Promise.all([
       readSh('proker_dokumentasi'), readSh('proker_jadwal'), readSh('proker_detail'),
       readSh('proker_notif_config'), readSh('anggota').catch(() => []), readSh('pengurus'),
-      readSh('pengumuman').catch(() => []), readSh('pencapaian').catch(() => [])
+      readSh('pengumuman').catch(() => []), readSh('pencapaian').catch(() => []),
+      readSh('karya').catch(() => [])
     ]);
     S.dok   = dok.filter(d=>d.delete_flag!=='TRUE').map((d,i)  => ({...d, _i:i, _m:false, _n:false, _d:false}));
     S.jad   = jad.filter(d=>d.delete_flag!=='TRUE').map((d,i)  => ({...d, _i:i, _m:false, _n:false, _d:false}));
@@ -2076,6 +2112,7 @@ async function silentReload() {
       .map((d,i) => ({...d, _i:i, _m:false}));
     S.pgm   = pgm.filter(d=>d.delete_flag!=='TRUE').map((d,i)  => ({...d, _i:i, _m:false, _n:false, _d:false}));
     S.cap   = cap.filter(d=>d.delete_flag!=='TRUE').map((d,i)  => ({...d, _i:i, _m:false, _n:false, _d:false}));
+    S.karya = karya.filter(d=>d.delete_flag!=='TRUE').map((d,i) => ({...d, _i:i, _m:false, _n:false, _d:false}));
     // Refresh version lock
     const lockData = await readSh(LOCK_SHEET).catch(() => []);
     if (lockData && lockData.length > 0) _localVersion = lockData[0].version || _localVersion;
@@ -4207,14 +4244,51 @@ function saveEditCap(i) {
 /* ═══════════════════════════════════════════════════════════
    FOTO DOKUMENTASI — 3 mode input
    Upload: buka Google Form di popup → deteksi popup.closed
-           → UID disimpan di sessionStorage → resolve saat saveSesi
+           → langsung mulai auto-polling GAS tiap FOTO_POLL_INTERVAL ms
+           → tombol Simpan diblokir selama polling aktif
+           → setelah URL didapat, polling berhenti & tombol aktif kembali
 ═══════════════════════════════════════════════════════════ */
 
-const FORM_UPLOAD_BASE  = 'https://docs.google.com/forms/d/e/1FAIpQLSejpViQvqOIUojjQxG9KpkUBFwKEcNREVt4wKN5UoGqOlcd8w/viewform';
-const FORM_ENTRY_UID    = 'entry.1781150924';
-const FOTO_SESSION_KEY  = 'jcosasi_foto_uids'; // sessionStorage key
+const FORM_UPLOAD_BASE   = 'https://docs.google.com/forms/d/e/1FAIpQLSejpViQvqOIUojjQxG9KpkUBFwKEcNREVt4wKN5UoGqOlcd8w/viewform';
+const FORM_ENTRY_UID     = 'entry.1781150924';
+const FOTO_SESSION_KEY   = 'jcosasi_foto_uids'; // sessionStorage key
+const FOTO_POLL_DELAY    = 5000;   // ms — jeda sebelum cek pertama setelah popup ditutup
+const FOTO_POLL_INTERVAL = 5000;   // ms — interval antar cek berikutnya
+const FOTO_POLL_TIMEOUT  = 5 * 60 * 1000; // ms — batas maksimal polling (5 menit)
 
-/* Ambil daftar UID yang pending dari sessionStorage */
+// Map uid → intervalId untuk polling aktif
+const _fotoPollingMap = {};
+
+// Jumlah UID yang sedang dalam proses polling (menentukan apakah Simpan diblokir)
+let _fotoResolvingCount = 0;
+
+/* ── Blokir / lepas tombol Simpan Sesi ── */
+function _setSimpanable(canSave) {
+  const btn = document.getElementById('btnSimpanSesi');
+  if (!btn) return;
+  if (canSave) {
+    btn.disabled = false;
+    btn.title = '';
+    btn.style.opacity = '';
+    btn.style.cursor  = '';
+  } else {
+    btn.disabled = true;
+    btn.title = 'Tunggu — sedang memproses file yang diupload…';
+    btn.style.opacity = '0.5';
+    btn.style.cursor  = 'not-allowed';
+  }
+}
+
+function _incResolving() {
+  _fotoResolvingCount++;
+  _setSimpanable(false);
+}
+function _decResolving() {
+  _fotoResolvingCount = Math.max(0, _fotoResolvingCount - 1);
+  if (_fotoResolvingCount === 0) _setSimpanable(true);
+}
+
+/* ── sessionStorage helpers ── */
 function _getFotoUids() {
   try { return JSON.parse(sessionStorage.getItem(FOTO_SESSION_KEY) || '[]'); }
   catch(_) { return []; }
@@ -4232,6 +4306,7 @@ function _removeFotoUid(uid) {
   _saveFotoUids(_getFotoUids().filter(u => u.uid !== uid));
 }
 
+/* ── Append URL ke field dan render preview ── */
 function _appendFotoUrl(fieldId, url) {
   const el = document.getElementById(fieldId);
   if (!el) return;
@@ -4253,7 +4328,7 @@ function addFotoGdrive(fieldId) {
     : raw.trim());
 }
 
-/* Buka Google Form di popup, pantau sampai popup ditutup */
+/* ── Buka Google Form di popup, pantau sampai popup ditutup ── */
 function uploadFotoFile(fieldId) {
   const uid   = 'uid_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
   const fname = 'proker_dokumentasi_' + (S.today||new Date().toISOString().slice(0,10)) + '_' + Date.now();
@@ -4265,19 +4340,19 @@ function uploadFotoFile(fieldId) {
     return;
   }
 
-  // Simpan UID ke sessionStorage saat popup dibuka
+  // Simpan UID ke sessionStorage
   _addFotoUid(uid, fname);
 
-  // Tampilkan status di bawah input
+  // Tampilkan status & pantau popup
   _showFotoUploadStatus(fieldId, uid, popup);
 }
 
 function _showFotoUploadStatus(fieldId, uid, popup) {
   // Cari atau buat container status
-  let statusEl = document.getElementById('foto_status_' + fieldId);
+  let statusEl = document.getElementById('foto_status_' + uid);
   if (!statusEl) {
     statusEl = document.createElement('div');
-    statusEl.id = 'foto_status_' + fieldId;
+    statusEl.id = 'foto_status_' + uid;
     statusEl.className = 'foto-upload-status';
     const preview = document.getElementById(fieldId + '_preview');
     if (preview) preview.parentNode.insertBefore(statusEl, preview);
@@ -4286,62 +4361,124 @@ function _showFotoUploadStatus(fieldId, uid, popup) {
   statusEl.innerHTML = `<span class="fus-dot fus-waiting"></span>
     <span class="fus-msg">Form dibuka — upload file lalu klik Submit di form…</span>`;
 
-  // Pantau popup.closed setiap 1 detik
-  const check = setInterval(() => {
+  // Pantau popup.closed tiap 1 detik
+  const popupCheck = setInterval(() => {
     if (!popup || popup.closed) {
-      clearInterval(check);
-      // Popup ditutup — tandai sebagai "terkirim, menunggu konfirmasi"
+      clearInterval(popupCheck);
+      // Popup ditutup → mulai auto-polling setelah jeda awal
       statusEl.innerHTML = `<span class="fus-dot fus-sent"></span>
-        <span class="fus-msg">✅ Form terkirim — URL akan diambil saat klik Simpan</span>
-        <button class="fus-cancel" onclick="_cancelFotoUid('${uid}','${fieldId}')">×</button>`;
+        <span class="fus-msg">⏳ Form terkirim — mengambil URL foto dalam beberapa detik…</span>`;
+      setTimeout(() => _startFotoPolling(fieldId, uid, statusEl), FOTO_POLL_DELAY);
     }
   }, 1000);
 
-  // Timeout 10 menit — hapus status jika terlalu lama
+  // Timeout 10 menit jika popup tidak pernah ditutup
   setTimeout(() => {
-    clearInterval(check);
-    if (!popup || popup.closed) return; // sudah selesai
+    clearInterval(popupCheck);
+    if (!popup || popup.closed) return;
     statusEl.innerHTML = `<span class="fus-dot fus-error"></span>
       <span class="fus-msg">Form belum disubmit — tutup popup setelah selesai upload</span>`;
   }, 10 * 60 * 1000);
 }
 
-function _cancelFotoUid(uid, fieldId) {
+/* ── Auto-polling: cek GAS tiap FOTO_POLL_INTERVAL sampai URL didapat ── */
+function _startFotoPolling(fieldId, uid, statusEl) {
+  // Jika sudah ada polling untuk UID ini, jangan duplikat
+  if (_fotoPollingMap[uid]) return;
+
+  _incResolving(); // blokir tombol Simpan
+
+  let attempt  = 0;
+  const started = Date.now();
+
+  function _updateStatus(dot, msg, showCancel) {
+    if (!statusEl) return;
+    statusEl.innerHTML = `<span class="fus-dot ${dot}"></span>
+      <span class="fus-msg">${msg}</span>
+      ${showCancel ? `<button class="fus-cancel" onclick="_cancelFotoPolling('${uid}','${fieldId}')">Batal</button>` : ''}`;
+  }
+
+  async function _poll() {
+    attempt++;
+    const elapsed = Math.round((Date.now() - started) / 1000);
+    _updateStatus('fus-sent', `⏳ Mengambil URL foto… (cek ke-${attempt}, sudah ${elapsed}s)`, true);
+
+    try {
+      const result = await jsonp({ action: 'resolveFormUpload', uploadId: uid });
+
+      if (result && result.status === 'ok' && result.url) {
+        // Berhasil — append URL, bersihkan state
+        clearInterval(_fotoPollingMap[uid]);
+        delete _fotoPollingMap[uid];
+        _decResolving();
+        _removeFotoUid(uid);
+
+        const urls = result.url.split(',').filter(Boolean);
+        urls.forEach(u => _appendFotoUrl(fieldId, u.trim()));
+
+        _updateStatus('fus-ok', `✅ Foto berhasil diproses (${urls.length} file)`);
+        setTimeout(() => { if (statusEl) statusEl.remove(); }, 3000);
+        toast('✅ Foto berhasil diambil dari Drive', 'success');
+        return;
+      }
+      // Belum ada di sheet — lanjut polling
+    } catch(err) {
+      console.warn('[_poll]', err);
+      // Error jaringan — lanjut polling, tidak berhenti
+    }
+
+    // Cek timeout
+    if (Date.now() - started >= FOTO_POLL_TIMEOUT) {
+      clearInterval(_fotoPollingMap[uid]);
+      delete _fotoPollingMap[uid];
+      _decResolving();
+      _updateStatus('fus-error',
+        '⚠️ Foto belum ditemukan setelah 5 menit. Coba batalkan lalu upload ulang.', true);
+    }
+  }
+
+  // Jalankan cek pertama langsung, lalu interval berikutnya
+  _poll();
+  _fotoPollingMap[uid] = setInterval(_poll, FOTO_POLL_INTERVAL);
+}
+
+/* ── Batalkan polling untuk UID tertentu ── */
+function _cancelFotoPolling(uid, fieldId) {
+  if (_fotoPollingMap[uid]) {
+    clearInterval(_fotoPollingMap[uid]);
+    delete _fotoPollingMap[uid];
+    _decResolving();
+  }
   _removeFotoUid(uid);
-  const el = document.getElementById('foto_status_' + fieldId);
+  const el = document.getElementById('foto_status_' + uid);
   if (el) el.remove();
 }
 
-/* Dipanggil dari saveSesi — resolve semua UID pending ke URL sebelum simpan */
+/* ── Fallback: dipanggil dari saveSesi untuk UID yang mungkin belum selesai ── */
 async function resolveFotoUids(fieldId) {
+  // Jika masih ada polling aktif, saveSesi harusnya sudah diblokir.
+  // Ini hanya fallback untuk UID yang pending tapi pollingnya belum dimulai
+  // (misal: halaman di-refresh lalu dibuka kembali).
   const uids = _getFotoUids();
-  if (!uids.length) return; // tidak ada upload pending
+  if (!uids.length) return;
 
-  const el = document.getElementById(fieldId);
-  if (!el) return;
+  // Cek apakah semua sudah ditangani oleh polling aktif
+  const orphaned = uids.filter(item => !_fotoPollingMap[item.uid]);
+  if (!orphaned.length) return;
 
-  toast('⏳ Mengambil URL foto dari Drive…', 'info');
+  toast('⏳ Mengambil URL foto yang belum selesai…', 'info');
 
-  for (const item of uids) {
-    try {
-      // Tanya GAS: cari URL berdasarkan upload_id di sheet responses Form
-      const result = await jsonp({
-        action:   'resolveFormUpload',
-        uploadId: item.uid,
-      });
-
-      if (result && result.status === 'ok' && result.url) {
-        const urls = result.url.split(',').filter(Boolean);
-        urls.forEach(u => _appendFotoUrl(fieldId, u.trim()));
-        _removeFotoUid(item.uid);
-        const statusEl = document.getElementById('foto_status_' + fieldId);
-        if (statusEl) statusEl.remove();
-      } else {
-        toast('⚠️ Foto dengan UID ' + item.uid + ' belum ditemukan di sheet', 'warning');
-      }
-    } catch(err) {
-      console.warn('[resolveFotoUids]', err);
+  for (const item of orphaned) {
+    // Buat statusEl sementara jika belum ada
+    let statusEl = document.getElementById('foto_status_' + item.uid);
+    if (!statusEl) {
+      statusEl = document.createElement('div');
+      statusEl.id = 'foto_status_' + item.uid;
+      statusEl.className = 'foto-upload-status';
+      const preview = document.getElementById(fieldId + '_preview');
+      if (preview) preview.parentNode.insertBefore(statusEl, preview);
     }
+    _startFotoPolling(fieldId, item.uid, statusEl);
   }
 }
 
@@ -4373,9 +4510,302 @@ function removeFotoByIndex(fieldId, idx) {
   renderFotoPreview(fieldId);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   KARYA — render, modal, CRUD
+═══════════════════════════════════════════════════════════ */
+
+const KARYA_TIPE_ICON = { video:'🎬', artikel:'📄', audio:'🎵', gambar:'🖼️', dokumen:'📁', lainnya:'📎' };
+// Tipe yang hanya pakai input link (tidak upload file) untuk media_url
+const KARYA_LINK_ONLY = ['video','audio'];
+
+function renderKarya() {
+  const el = document.getElementById('karyaContent');
+  if (!el) return;
+  const tipeFilter = (document.getElementById('karyaTipeFilter')?.value || '').trim();
+  const list = S.karya.filter(k =>
+    !k._d && (!tipeFilter || k.tipe === tipeFilter)
+  ).slice().sort((a,b) => (b.tanggal||'') > (a.tanggal||'') ? 1 : -1);
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty"><div class="ei">🎨</div><div class="et">Belum ada karya</div><div class="ed">Klik "+ Tambah Karya" untuk menambahkan</div></div>';
+    return;
+  }
+
+  el.innerHTML = '<div class="karya-grid">' + list.map(k => {
+    const ic   = KARYA_TIPE_ICON[k.tipe] || '📎';
+    const tags = (k.tag||'').split(';').map(t=>t.trim()).filter(Boolean);
+    const thumb = k.thumbnail_url || k.cover_url || '';
+    const isDirty = k._m || k._n;
+    return `<div class="karya-card${isDirty?' karya-card-dirty':''}${k._d?' karya-card-del':''}">
+      ${thumb ? `<div class="karya-thumb" style="background-image:url('${esc(thumb)}')"></div>`
+               : `<div class="karya-thumb karya-thumb-empty">${ic}</div>`}
+      <div class="karya-body">
+        <div class="karya-top">
+          <span class="karya-tipe-badge karya-tipe-${k.tipe||'lainnya'}">${ic} ${k.tipe||'—'}</span>
+          ${isDirty ? '<span class="karya-dirty-badge">✏️ Belum upload</span>' : ''}
+        </div>
+        <div class="karya-judul">${esc(k.judul||'Tanpa Judul')}</div>
+        <div class="karya-meta">
+          ${k.pembuat ? `<span>👤 ${esc(k.pembuat)}</span>` : ''}
+          ${k.tanggal ? `<span>📅 ${fDate(k.tanggal)}</span>` : ''}
+          ${k.proker_id ? `<span>📌 #${esc(k.proker_id)}</span>` : ''}
+        </div>
+        ${k.deskripsi ? `<div class="karya-desk">${esc((k.deskripsi||'').slice(0,100))}${k.deskripsi.length>100?'…':''}</div>` : ''}
+        ${tags.length ? `<div class="karya-tags">${tags.map(t=>`<span class="karya-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+        <div class="karya-actions">
+          ${k.media_url ? `<a class="btn-ar karya-link-btn" href="${esc(k.media_url.split(',')[0].trim())}" target="_blank" rel="noopener">🔗 Buka</a>` : ''}
+          <button class="btn-ar" onclick="openKarya(${k._i})">✏️ Edit</button>
+          <button class="btn-ar" style="color:var(--rd)" onclick="delKarya(${k._i})">🗑️ Hapus</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function openNewKaryaModal() {
+  document.getElementById('ek_idx').value     = 'new';
+  document.getElementById('karyaMT').textContent = 'Tambah Karya';
+  document.getElementById('ek_judul').value   = '';
+  document.getElementById('ek_tipe').value    = 'video';
+  document.getElementById('ek_pembuat').value = '';
+  document.getElementById('ek_tanggal').value = S.today;
+  document.getElementById('ek_deskripsi').value = '';
+  document.getElementById('ek_tag').value     = '';
+  document.getElementById('ek_media_url').value = '';
+  document.getElementById('ek_thumbnail_url').value = '';
+  document.getElementById('ek_cover_url').value = '';
+  _karyaMediaLinks = [];
+  _renderKaryaMediaLinks();
+  renderFotoPreview('ek_media_url');
+  renderFotoPreview('ek_thumbnail_url');
+  renderFotoPreview('ek_cover_url');
+  _fillKaryaProkerOpts('');
+  onKaryaTipeChange();
+  openModal('karyaModal');
+}
+
+function openKarya(i) {
+  const k = S.karya.find(k=>k._i===i); if (!k) return;
+  document.getElementById('ek_idx').value     = i;
+  document.getElementById('karyaMT').textContent = 'Edit: ' + (k.judul||'Karya');
+  document.getElementById('ek_judul').value   = k.judul||'';
+  document.getElementById('ek_tipe').value    = k.tipe||'video';
+  document.getElementById('ek_pembuat').value = k.pembuat||'';
+  document.getElementById('ek_tanggal').value = k.tanggal||'';
+  document.getElementById('ek_deskripsi').value = k.deskripsi||'';
+  document.getElementById('ek_tag').value     = k.tag||'';
+  document.getElementById('ek_media_url').value = k.media_url||'';
+  document.getElementById('ek_thumbnail_url').value = k.thumbnail_url||'';
+  document.getElementById('ek_cover_url').value = k.cover_url||'';
+  // Isi link list dari media_url
+  _karyaMediaLinks = (k.media_url||'').split(',').map(s=>s.trim()).filter(Boolean);
+  _renderKaryaMediaLinks();
+  renderFotoPreview('ek_media_url');
+  renderFotoPreview('ek_thumbnail_url');
+  renderFotoPreview('ek_cover_url');
+  _fillKaryaProkerOpts(k.proker_id||'');
+  onKaryaTipeChange();
+  openModal('karyaModal');
+}
+
+function _fillKaryaProkerOpts(sel) {
+  const el = document.getElementById('ek_proker_id');
+  if (!el) return;
+  el.innerHTML = '<option value="">— Tidak terkait —</option>' +
+    Object.entries(PK).map(([id,info]) =>
+      `<option value="${id}" ${id===sel?'selected':''}>${info.i} #${id} — ${info.n}</option>`
+    ).join('');
+}
+
+/* ── Toggle antara mode link-only dan mode upload sesuai tipe ── */
+function onKaryaTipeChange() {
+  const tipe    = document.getElementById('ek_tipe')?.value || 'video';
+  const isLink  = KARYA_LINK_ONLY.includes(tipe);
+  const linkDiv = document.getElementById('ek_media_link_mode');
+  const upDiv   = document.getElementById('ek_media_upload_mode');
+  const hint    = document.getElementById('ek_media_hint_label');
+  if (linkDiv) linkDiv.style.display = isLink ? '' : 'none';
+  if (upDiv)   upDiv.style.display   = isLink ? 'none' : '';
+  if (hint) {
+    const hints = {
+      video:    '— Tempel link YouTube / video',
+      audio:    '— Tempel link Spotify / YouTube / audio',
+      artikel:  '— Upload file atau tempel link artikel',
+      gambar:   '— Upload gambar ke Google Drive',
+      dokumen:  '— Upload dokumen ke Google Drive',
+      lainnya:  '— Tempel link atau upload file',
+    };
+    hint.textContent = hints[tipe] || '';
+  }
+}
+
+/* ── Link-only list manager (video/audio) ── */
+let _karyaMediaLinks = [];
+
+function _renderKaryaMediaLinks() {
+  const el = document.getElementById('ek_media_link_list');
+  if (!el) return;
+  if (!_karyaMediaLinks.length) {
+    el.innerHTML = '<div style="font-size:.78rem;color:var(--gm);padding:4px 0">Belum ada link — tambahkan di bawah</div>';
+    return;
+  }
+  el.innerHTML = _karyaMediaLinks.map((url, i) => `
+    <div class="karya-link-item">
+      <span class="karya-link-ic">${_guessLinkIcon(url)}</span>
+      <a href="${esc(url)}" target="_blank" class="karya-link-url" title="${esc(url)}">${esc(_shortUrl(url))}</a>
+      <button type="button" class="karya-link-del" onclick="_removeKaryaMediaLink(${i})">×</button>
+    </div>`
+  ).join('');
+  // Sync ke hidden field ek_media_url supaya saveSesi bisa baca
+  const urlField = document.getElementById('ek_media_url');
+  if (urlField) urlField.value = _karyaMediaLinks.join(',');
+}
+
+function addKaryaMediaLink() {
+  const inp = document.getElementById('ek_media_link_input');
+  if (!inp) return;
+  const url = inp.value.trim();
+  if (!url) return;
+  if (!_karyaMediaLinks.includes(url)) _karyaMediaLinks.push(url);
+  inp.value = '';
+  _renderKaryaMediaLinks();
+}
+
+function _removeKaryaMediaLink(idx) {
+  _karyaMediaLinks.splice(idx, 1);
+  _renderKaryaMediaLinks();
+}
+
+function _guessLinkIcon(url) {
+  if (/youtu\.?be/i.test(url))   return '▶️';
+  if (/spotify\.com/i.test(url)) return '🎵';
+  if (/soundcloud/i.test(url))   return '🎵';
+  if (/drive\.google/i.test(url))return '📁';
+  return '🔗';
+}
+function _shortUrl(url) {
+  try { const u = new URL(url); return u.hostname + (u.pathname.length > 30 ? u.pathname.slice(0,28)+'…' : u.pathname); }
+  catch(_) { return url.length > 50 ? url.slice(0,48)+'…' : url; }
+}
+
+/* ── Upload mode helpers (artikel/gambar/dokumen) ── */
+function addKaryaMediaUrlLink() {
+  const url = prompt('Masukkan URL media:');
+  if (url && url.trim()) _appendFotoUrl('ek_media_url', url.trim());
+}
+function addKaryaMediaGdrive() {
+  const raw = prompt('Masukkan link Google Drive:');
+  if (!raw || !raw.trim()) return;
+  const m = raw.trim().match(/\/d\/([a-zA-Z0-9_-]+)/);
+  _appendFotoUrl('ek_media_url', m
+    ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w800'
+    : raw.trim());
+}
+function addKaryaImgLink(fieldId) {
+  const url = prompt('Masukkan URL gambar:');
+  if (url && url.trim()) _appendFotoUrl(fieldId, url.trim());
+}
+function addKaryaImgGdrive(fieldId) {
+  const raw = prompt('Masukkan link Google Drive:');
+  if (!raw || !raw.trim()) return;
+  const m = raw.trim().match(/\/d\/([a-zA-Z0-9_-]+)/);
+  _appendFotoUrl(fieldId, m
+    ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w800'
+    : raw.trim());
+}
+
+/* ── closeModal override untuk reset Simpan Karya ── */
+// Sudah ditangani oleh closeModal generic — tidak perlu override khusus
+
+/* ── Save & Delete ── */
+async function saveKarya() {
+  // Blokir jika ada foto/cover/thumbnail sedang diproses
+  if (_fotoResolvingCount > 0) {
+    toast('⏳ Sedang memproses file yang diupload — harap tunggu sebelum menyimpan', 'warning');
+    const btn = document.getElementById('btnSimpanKarya');
+    if (btn) {
+      btn.style.transition = 'transform .08s ease';
+      btn.style.transform = 'translateX(-6px)';
+      setTimeout(() => { btn.style.transform = 'translateX(6px)'; }, 80);
+      setTimeout(() => { btn.style.transform = 'translateX(-3px)'; }, 160);
+      setTimeout(() => { btn.style.transform = ''; btn.style.transition = ''; }, 240);
+    }
+    return;
+  }
+  // Fallback orphaned UIDs untuk semua field foto
+  await resolveFotoUids('ek_thumbnail_url');
+  await resolveFotoUids('ek_cover_url');
+  await resolveFotoUids('ek_media_url');
+
+  const tipe = document.getElementById('ek_tipe').value;
+  // Untuk tipe link-only, ambil dari _karyaMediaLinks
+  let mediaUrl = '';
+  if (KARYA_LINK_ONLY.includes(tipe)) {
+    mediaUrl = _karyaMediaLinks.join(',');
+  } else {
+    mediaUrl = document.getElementById('ek_media_url').value.trim();
+  }
+
+  const judul = document.getElementById('ek_judul').value.trim();
+  if (!judul) { toast('⚠️ Judul tidak boleh kosong', 'warning'); document.getElementById('ek_judul').focus(); return; }
+
+  const nd = {
+    judul:         judul,
+    tipe:          tipe,
+    pembuat:       document.getElementById('ek_pembuat').value.trim(),
+    deskripsi:     document.getElementById('ek_deskripsi').value.trim(),
+    tag:           document.getElementById('ek_tag').value.trim(),
+    media_url:     mediaUrl,
+    thumbnail_url: document.getElementById('ek_thumbnail_url').value.trim(),
+    cover_url:     document.getElementById('ek_cover_url').value.trim(),
+    tanggal:       document.getElementById('ek_tanggal').value,
+    proker_id:     document.getElementById('ek_proker_id').value,
+  };
+
+  const i = document.getElementById('ek_idx').value;
+  if (i === 'new') {
+    const ni = Date.now();
+    S.karya.push({...nd, _i:ni, _m:false, _n:true, _d:false});
+    logC('add','karya',ni, nd.judul);
+    toast('✅ Karya ditambahkan','success');
+  } else {
+    const idx = S.karya.findIndex(k=>k._i===+i);
+    if (idx>=0) { S.karya[idx]={...S.karya[idx],...nd,_m:true}; logC('edit','karya',+i,nd.judul); }
+    toast('✅ Karya disimpan','success');
+  }
+  closeModal('karyaModal');
+  renderKarya(); updateBadges();
+}
+
+function delKarya(i) {
+  const idx = S.karya.findIndex(k=>k._i===i); if(idx<0) return;
+  if (S.karya[idx]._n) {
+    S.karya.splice(idx,1);
+  } else {
+    S.karya[idx]._d = true;
+    S.karya[idx]._m = false;
+    logC('del','karya',i, S.karya[idx].judul||'Karya');
+  }
+  renderKarya(); updateBadges(); toast('🗑️ Ditandai untuk dihapus','warning');
+}
+
+/* Observer untuk reset preview saat karyaModal dibuka */
 document.addEventListener('DOMContentLoaded', () => {
-  const m = document.getElementById('sesiModal');
+  // sesiModal — reset preview foto dokumentasi
+  const ms = document.getElementById('sesiModal');
+  if (ms) new MutationObserver(() => {
+    if (ms.classList.contains('open')) setTimeout(()=>renderFotoPreview('e_foto'), 100);
+  }).observe(ms, { attributes:true, attributeFilter:['class'] });
+
+  // karyaModal — reset preview semua foto/media
+  const m = document.getElementById('karyaModal');
   if (m) new MutationObserver(() => {
-    if (m.classList.contains('open')) setTimeout(()=>renderFotoPreview('e_foto'), 100);
+    if (m.classList.contains('open')) {
+      setTimeout(() => {
+        renderFotoPreview('ek_thumbnail_url');
+        renderFotoPreview('ek_cover_url');
+        renderFotoPreview('ek_media_url');
+      }, 100);
+    }
   }).observe(m, { attributes:true, attributeFilter:['class'] });
 });

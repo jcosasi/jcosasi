@@ -381,14 +381,72 @@ body {
 .lb-media video   { max-height: 60vh; }
 .lb-media img.lb-img { width: 100%; max-height: 70vh; object-fit: contain; background: #0d0b14; }
 
-.lb-doc {
-  width: 100%; padding: 32px;
-  background: var(--paper); border-radius: var(--r);
-  max-height: 75vh; overflow-y: auto;
+.lb-doc-frame {
+  width: 100%;
+  flex: 1;               /* isi sisa tinggi lb-inner */
+  min-height: 0;
+  background: #fff;
+  border-radius: var(--r) var(--r) 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-.lb-doc-content {
-  font-family: var(--fb); font-size: .9rem; line-height: 1.8;
-  color: var(--ink2); white-space: pre-wrap;
+.lb-doc-iframe {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  display: block;
+}
+.lb-doc-toolbar {
+  padding: 8px 16px;
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 10px;
+}
+.lb-doc-info {
+  font-size: .72rem;
+  color: var(--mute);
+  font-family: var(--fm);
+}
+.lb-doc-nourl {
+  aspect-ratio: 16/9;
+  background: linear-gradient(135deg, #0d0b14, #1a0f2e);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  color: rgba(255,255,255,.4);
+  border-radius: var(--r) var(--r) 0 0;
+}
+
+/* Untuk tulisan: lb-inner jadi full height, tanpa lb-info */
+.lb-inner.lb-tulisan {
+  height: 90vh;
+  max-height: 90vh;
+}
+
+/* Header tipis di atas iframe dokumen */
+.lb-doc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--white);
+  border-bottom: 1.5px solid var(--line);
+  flex-shrink: 0;
+}
+.lb-doc-title {
+  font-family: var(--fs); font-size: .92rem; font-weight: 700;
+  color: var(--ink); flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lb-doc-header-right {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.lb-doc-by {
+  font-size: .72rem; color: var(--pm); font-weight: 600;
 }
 
 .lb-audio-wrap {
@@ -630,3 +688,106 @@ body {
   display: inline-flex; align-items: center; gap: 6px;
 }
 .lb-vf-btn:hover { opacity: .88; }
+
+/* ══ ZOOM SYSTEM ══════════════════════════════ */
+
+/* ── Image zoom wrap ── */
+.lb-zoom-wrap {
+  position: relative;
+  width: 100%;
+  max-height: 72vh;
+  background: #0d0b14;
+  border-radius: var(--r) var(--r) 0 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;   /* kita handle sendiri */
+  user-select: none;
+}
+.lb-zoom-stage {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+.lb-zoom-img {
+  max-width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  transform-origin: center center;
+  transition: transform .12s ease;
+  will-change: transform;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ── Zoom controls bar (gambar & dokumen) ── */
+.lb-zoom-controls,
+.lb-doc-zoom-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lb-zoom-controls {
+  position: absolute;
+  bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10,8,20,.72);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 99px;
+  padding: 5px 10px;
+  gap: 6px;
+  z-index: 10;
+}
+.lb-zc-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%; border: none;
+  background: rgba(255,255,255,.12);
+  color: #fff; font-size: .85rem; font-weight: 700;
+  cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: background .15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.lb-zc-btn:hover { background: rgba(255,255,255,.26); }
+.lb-zc-btn:active { background: rgba(255,255,255,.4); transform: scale(.92); }
+.lb-zc-level {
+  font-family: var(--fm); font-size: .65rem;
+  color: rgba(255,255,255,.7);
+  min-width: 36px; text-align: center;
+}
+
+/* Doc zoom btns (di dalam header, warna gelap) */
+.lb-doc-zoom-btns .lb-zc-btn {
+  background: var(--pp);
+  color: var(--pm); font-size: .78rem;
+  width: 26px; height: 26px;
+}
+.lb-doc-zoom-btns .lb-zc-btn:hover { background: var(--pg); }
+.lb-doc-zoom-btns .lb-zc-level {
+  color: var(--ink3);
+  font-size: .65rem;
+}
+
+/* ── Doc iframe wrap ── */
+.lb-doc-iframe-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.lb-doc-iframe-wrap .lb-doc-iframe {
+  transform-origin: top left;
+  transition: transform .2s ease;
+}
+
+/* ── Responsive zoom ── */
+@media (max-width: 768px) {
+  .lb-zoom-wrap   { max-height: 55vh; }
+  .lb-zoom-img    { max-height: 55vh; }
+  .lb-zoom-controls { bottom: 8px; padding: 4px 8px; gap: 4px; }
+  .lb-zc-btn      { width: 32px; height: 32px; font-size: .9rem; } /* lebih besar untuk jari */
+  .lb-doc-header  { flex-wrap: wrap; gap: 6px; }
+  .lb-doc-header-right { flex-wrap: wrap; gap: 4px; }
+}
