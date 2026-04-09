@@ -248,7 +248,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ── NAVBAR SCROLL ── */
   const navbar = $('navbar');
-  window.addEventListener('scroll', () => navbar.classList.toggle('scrolled', window.scrollY>60), {passive:true});
+  // Gunakan scrollY dengan fallback pageYOffset untuk kompatibilitas browser lama
+  function getScrollY() {
+    return window.scrollY !== undefined ? window.scrollY : window.pageYOffset;
+  }
+  function updateNavbarScroll() {
+    navbar.classList.toggle('scrolled', getScrollY() > 60);
+  }
+  window.addEventListener('scroll', updateNavbarScroll, { passive: true });
+  // Juga trigger saat visualViewport berubah (browser mobile resize karena URL bar)
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateNavbarScroll, { passive: true });
+    window.visualViewport.addEventListener('scroll', updateNavbarScroll, { passive: true });
+  }
+  updateNavbarScroll(); // jalankan sekali saat load
 
   /* ── HAMBURGER ── */
   const ham = $('hamburger'), mob = $('mobileMenu'), nav = $('navbar');
