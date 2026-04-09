@@ -49,16 +49,23 @@ function formatDate(str) {
 
 // ── TYPE META ──────────────────────────────────
 const TYPE_META = {
-  video:   { ico:'▶', label:'Video',   badgeClass:'badge-video'   },
-  lagu:    { ico:'♪', label:'Lagu',    badgeClass:'badge-lagu'    },
-  gambar:  { ico:'◻', label:'Gambar',  badgeClass:'badge-gambar'  },
-  tulisan: { ico:'✎', label:'Tulisan', badgeClass:'badge-tulisan' },
-  artikel: { ico:'✎', label:'Artikel', badgeClass:'badge-tulisan' },
+  video:   { ico:'🎬', label:'Video',   badgeClass:'badge-video'   },
+  artikel: { ico:'📄', label:'Artikel', badgeClass:'badge-tulisan' },
+  audio:   { ico:'🎵', label:'Audio',   badgeClass:'badge-lagu'    },
+  gambar:  { ico:'🖼️', label:'Gambar',  badgeClass:'badge-gambar'  },
+  dokumen: { ico:'📁', label:'Dokumen', badgeClass:'badge-tulisan' },
+  lainnya: { ico:'📎', label:'Lainnya', badgeClass:'badge-lainnya' },
+  // alias lama agar data lama tetap tampil
+  lagu:    { ico:'🎵', label:'Audio',   badgeClass:'badge-lagu'    },
+  tulisan: { ico:'📄', label:'Artikel', badgeClass:'badge-tulisan' },
 };
-function typeMeta(t) { return TYPE_META[t] || { ico:'◻', label: t||'—', badgeClass:'badge-gambar' }; }
+function typeMeta(t) { return TYPE_META[t] || { ico:'📎', label: t||'—', badgeClass:'badge-lainnya' }; }
 
-// Normalisasi tipe — 'artikel' diperlakukan sama dengan 'tulisan'
-function normalizeTipe(t) { return t === 'artikel' ? 'tulisan' : (t || ''); }
+// Normalisasi tipe — mapping alias lama → baru
+function normalizeTipe(t) {
+  const map = { lagu:'audio', tulisan:'artikel' };
+  return map[t] || (t || '');
+}
 
 // ── INIT ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -209,18 +216,19 @@ function openLightbox(id) {
   const lb    = document.getElementById('lightbox');
   const inner = document.getElementById('lbInner');
   const tm    = typeMeta(k.tipe);
-  const tipe  = normalizeTipe(k.tipe);   // 'artikel' → 'tulisan', dll
+  const tipe  = normalizeTipe(k.tipe);
   const tags  = (k.tag||'').split(';').map(t=>t.trim()).filter(Boolean);
 
   let mediaHtml = '';
   const mediaUrl = k.media_url || '';
 
+  // Tentukan kelompok render berdasarkan tipe ternormalisasi
+  const isDoc   = tipe === 'artikel' || tipe === 'dokumen';
+  const isAudio = tipe === 'audio';
+
   if (tipe === 'video') {
     const ytId = extractYoutubeId(mediaUrl);
     if (ytId) {
-      // Gunakan thumbnail YouTube sebagai preview, bukan iframe langsung.
-      // Klik play → buka YouTube di tab baru (menghindari Error 153 sepenuhnya).
-      // Jika user klik "Putar di sini", baru ganti ke iframe.
       const thumb = k.thumbnail_url
         || `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg`;
       mediaHtml = `<div class="lb-yt-preview" id="lbYtPreview">
@@ -247,14 +255,14 @@ function openLightbox(id) {
       mediaHtml = `<div class="lb-media"><iframe src="${esc(src)}" allowfullscreen></iframe></div>`;
     }
 
-  } else if (tipe === 'lagu') {
+  } else if (isAudio) {
     const coverImg = k.cover_url || k.thumbnail_url || '';
     const driveId  = extractDriveId(mediaUrl);
     const src = driveId ? `https://drive.google.com/uc?export=download&id=${driveId}` : mediaUrl;
     mediaHtml = `<div class="lb-audio-wrap">
       ${coverImg
         ? `<img class="lb-audio-cover" src="${esc(coverImg)}" alt="cover">`
-        : `<div class="lb-audio-cover-ph">♪</div>`}
+        : `<div class="lb-audio-cover-ph">🎵</div>`}
       ${src ? `<audio controls autoplay src="${esc(src)}"></audio>` : '<div style="color:rgba(255,255,255,.4);font-size:.8rem">Tidak ada file audio</div>'}
     </div>`;
 
@@ -275,7 +283,7 @@ function openLightbox(id) {
         </div>
       </div>` : '';
 
-  } else if (tipe === 'tulisan') {
+  } else if (isDoc) {
     const embedSrc = buildDocEmbedUrl(mediaUrl);
     if (embedSrc) {
       mediaHtml = `<div class="lb-doc-frame">
@@ -283,41 +291,42 @@ function openLightbox(id) {
           <div class="lb-doc-title">${esc(k.judul||'Tanpa Judul')}</div>
           <div class="lb-doc-header-right">
             ${k.pembuat ? `<span class="lb-doc-by">✎ ${esc(k.pembuat)}</span>` : ''}
-            <div class="lb-doc-zoom-btns">
-              <button class="lb-zc-btn" onclick="zoomDoc(-0.1)" title="Perkecil">－</button>
-              <span class="lb-zc-level" id="lbDocZoomLevel">100%</span>
-              <button class="lb-zc-btn" onclick="zoomDoc(0.1)" title="Perbesar">＋</button>
-              <button class="lb-zc-btn" onclick="zoomDocReset()" title="Reset">⤢</button>
-            </div>
             <a class="lb-open-btn" href="${esc(mediaUrl)}" target="_blank" rel="noopener">↗ Buka</a>
           </div>
         </div>
-        <div class="lb-doc-iframe-wrap" id="lbDocIframeWrap">
-          <iframe
-            id="lbDocIframe"
-            src="${esc(embedSrc)}"
-            class="lb-doc-iframe"
-            frameborder="0"
-            allowfullscreen
-          ></iframe>
-        </div>
+        <iframe
+          id="lbDocIframe"
+          src="${esc(embedSrc)}"
+          class="lb-doc-iframe"
+          frameborder="0"
+          allowfullscreen
+        ></iframe>
       </div>`;
     } else {
       mediaHtml = `<div class="lb-doc-frame lb-doc-nourl">
-        <div class="lb-vf-ico">✎</div>
+        <div class="lb-vf-ico">${tm.ico}</div>
         <div class="lb-vf-msg">URL dokumen tidak tersedia</div>
       </div>`;
     }
+
+  } else {
+    // lainnya — tampilkan link saja
+    mediaHtml = mediaUrl ? `<div class="lb-lainnya-wrap">
+      <div class="lb-lainnya-ico">📎</div>
+      <div class="lb-lainnya-msg">Buka file di tab baru untuk melihat konten</div>
+      <a class="lb-vf-btn" href="${esc(mediaUrl)}" target="_blank" rel="noopener">↗ Buka File</a>
+    </div>` : '';
   }
 
   inner.innerHTML = `
+    <button class="lb-close-inner" onclick="closeLightbox()">✕</button>
     ${mediaHtml}
-    ${tipe !== 'tulisan' ? `<div class="lb-info">
+    ${!isDoc ? `<div class="lb-info">
       <div class="lb-info-top">
         <div class="lb-judul">${esc(k.judul||'Tanpa Judul')}</div>
         <span class="lb-type-badge ${tm.badgeClass}">${tm.label}</span>
       </div>
-      ${k.pembuat ? `<div class="lb-pembuat">✎ ${esc(k.pembuat)}</div>` : ''}
+      ${k.pembuat ? `<div class="lb-pembuat">${tm.ico} ${esc(k.pembuat)}</div>` : ''}
       ${k.deskripsi ? `<div class="lb-desc">${esc(k.deskripsi)}</div>` : ''}
       ${tags.length ? `<div class="lb-tags">${tags.map(t=>`<span class="card-tag">${esc(t)}</span>`).join('')}</div>` : ''}
       <div class="lb-meta">
@@ -327,19 +336,13 @@ function openLightbox(id) {
       </div>
     </div>` : ''}`;
 
-  // Tambah class khusus untuk tulisan agar lb-inner mengisi penuh
-  inner.classList.toggle('lb-tulisan', tipe === 'tulisan');
+  inner.classList.toggle('lb-tulisan', isDoc);
 
   lb.classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  // Init zoom setelah render
-  if (tipe === 'gambar') {
-    requestAnimationFrame(_initImageZoom);
-  }
-  if (tipe === 'tulisan') {
-    _docZoom = 1;
-  }
+  if (tipe === 'gambar') requestAnimationFrame(_initImageZoom);
+  if (isDoc) _docZoom = 1;
 }
 
 function closeLightbox(e) {

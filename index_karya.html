@@ -35,10 +35,12 @@
   <div class="filter-inner">
     <div class="filter-types" id="filterTypes">
       <button class="ftype-btn active" data-type="" onclick="setTypeFilter(this,'')">Semua</button>
-      <button class="ftype-btn" data-type="video" onclick="setTypeFilter(this,'video')">▶ Video</button>
-      <button class="ftype-btn" data-type="lagu" onclick="setTypeFilter(this,'lagu')">♪ Lagu</button>
-      <button class="ftype-btn" data-type="gambar" onclick="setTypeFilter(this,'gambar')">◻ Gambar</button>
-      <button class="ftype-btn" data-type="tulisan" onclick="setTypeFilter(this,'tulisan')">✎ Tulisan / Artikel</button>
+      <button class="ftype-btn" data-type="video"   onclick="setTypeFilter(this,'video')">🎬 Video</button>
+      <button class="ftype-btn" data-type="artikel" onclick="setTypeFilter(this,'artikel')">📄 Artikel</button>
+      <button class="ftype-btn" data-type="audio"   onclick="setTypeFilter(this,'audio')">🎵 Audio</button>
+      <button class="ftype-btn" data-type="gambar"  onclick="setTypeFilter(this,'gambar')">🖼️ Gambar</button>
+      <button class="ftype-btn" data-type="dokumen" onclick="setTypeFilter(this,'dokumen')">📁 Dokumen</button>
+      <button class="ftype-btn" data-type="lainnya" onclick="setTypeFilter(this,'lainnya')">📎 Lainnya</button>
     </div>
     <div class="filter-tags" id="filterTagsWrap">
       <div class="tag-chips" id="tagChips"></div>
@@ -77,7 +79,6 @@
 
 <!-- ══ LIGHTBOX ══ -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
-  <button class="lb-close" onclick="closeLightbox()">✕</button>
   <div class="lb-inner" id="lbInner"></div>
 </div>
 
