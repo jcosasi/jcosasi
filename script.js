@@ -148,6 +148,368 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* TIMELINE */
   set('tlLabel', C.timeline.label);
+
+  /* ══════════════════════════════════════════
+     PROKER CAROUSEL — MOBILE ONLY
+     Diinject setelah proker-grid selesai dirender.
+     Logika: clone semua card ke track carousel,
+     auto-scroll infinite, drag-to-pan, pause on select.
+  ══════════════════════════════════════════ */
+  (function initProkerCarousel() {
+    /* Hanya aktif di mobile (≤768px). Jika desktop, skip. */
+    const mq = window.matchMedia('(max-width: 768px)');
+
+    /* Inject wrapper carousel ke DOM (setelah #proker controls) */
+    const prokerSection = document.getElementById('proker');
+    if (!prokerSection) return;
+
+    /* Buat elemen carousel */
+    const wrap  = document.createElement('div');
+    wrap.className = 'proker-carousel-wrap';
+    wrap.id = 'prokerCarouselWrap';
+
+    const pauseBadge = document.createElement('div');
+    pauseBadge.className = 'proker-carousel-pause-badge';
+    pauseBadge.textContent = '⏸ Dijeda';
+    wrap.appendChild(pauseBadge);
+
+    const track = document.createElement('div');
+    track.className = 'proker-carousel-track';
+    track.id = 'prokerCarouselTrack';
+    wrap.appendChild(track);
+
+    const dotsEl = document.createElement('div');
+    dotsEl.className = 'proker-carousel-dots';
+    dotsEl.id = 'prokerCarouselDots';
+
+    /* Sisipkan carousel setelah .proker-controls */
+    const controls = prokerSection.querySelector('.proker-controls');
+    const grid     = document.getElementById('prokerGrid');
+    if (!grid) return;
+    grid.parentNode.insertBefore(wrap,  grid.nextSibling);
+    grid.parentNode.insertBefore(dotsEl, wrap.nextSibling);
+
+    /* ── State ── */
+    let cards        = [];   // array card asli (bukan klon)
+    let activeFilter = 'all';
+    let activeIdx    = 0;    // index card yang sedang "selected"
+    let isPaused     = false;
+    let dragActive   = false;
+    let dragStartX   = 0;
+    let dragStartTranslate = 0;
+    let currentTranslate = 0;
+    let animFrame    = null;
+    let velocity     = 0;
+    let lastDragX    = 0;
+    let lastDragTime = 0;
+    /* Kecepatan auto-scroll px/detik */
+    const AUTO_SPEED = 38;
+    /* Minimum swipe px untuk dianggap drag (bukan tap) */
+    const DRAG_THRESHOLD = 8;
+    let isDragging   = false; // true setelah melebihi threshold
+
+    /* ── Build / rebuild track ── */
+    function buildTrack(filter) {
+      /* Ambil card dari proker-grid (sumber kebenaran) */
+      const source = document.querySelectorAll('#prokerGrid .proker-card');
+      const filtered = [];
+      source.forEach(card => {
+        const cat = card.dataset.cat || '';
+        if (filter === 'all' || cat.includes(filter)) filtered.push(card);
+      });
+      cards = filtered;
+
+      /* Kosongkan track & dots */
+      track.innerHTML  = '';
+      dotsEl.innerHTML = '';
+
+      if (cards.length === 0) {
+        wrap.style.display = 'none';
+        dotsEl.style.display = 'none';
+        return;
+      }
+      wrap.style.display = '';
+      dotsEl.style.display = '';
+
+      /* Clone cards → track.
+         Untuk infinite loop, duplikat set card (3 kali agar selalu ada cukup item). */
+      const repeatCount = cards.length < 4 ? 4 : 2; // lebih banyak klon kalau card sedikit
+      for (let r = 0; r < repeatCount; r++) {
+        cards.forEach((card, i) => {
+          const clone = card.cloneNode(true);
+          clone.dataset.realIdx = i;
+          clone.dataset.setIdx  = r;
+          /* Hapus class animasi agar langsung visible */
+          clone.classList.remove('fade-up', 'delay-1', 'delay-2', 'hidden', 'carousel-active');
+          clone.classList.add('visible');
+          /* Hapus id duplikat pada badge notif agar tidak conflict */
+          const badge = clone.querySelector('[id^="notif-badge-"]');
+          if (badge) badge.removeAttribute('id');
+          track.appendChild(clone);
+        });
+      }
+
+      /* Dots — satu per card asli */
+      cards.forEach((_, i) => {
+        const dot = document.createElement('span');
+        dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+        dot.dataset.idx = i;
+        dot.addEventListener('click', () => snapToCard(i));
+        dotsEl.appendChild(dot);
+      });
+
+      /* Reset posisi ke set pertama */
+      const cardW = getCardWidth();
+      /* Mulai dari set pertama (index repeatCount-1 supaya bisa scroll ke kiri juga) */
+      currentTranslate = 0;
+      activeIdx = 0;
+      setTranslate(currentTranslate, false);
+      updateActive();
+    }
+
+    function getCardWidth() {
+      const first = track.querySelector('.proker-card');
+      if (!first) return 0;
+      const style = window.getComputedStyle(track);
+      const gap   = parseFloat(style.gap) || 16;
+      return first.getBoundingClientRect().width + gap;
+    }
+
+    function getTotalSetWidth() {
+      return getCardWidth() * cards.length;
+    }
+
+    function setTranslate(x, withTransition) {
+      track.style.transition = withTransition
+        ? 'transform 0.38s cubic-bezier(.25,.8,.25,1)'
+        : 'none';
+      track.style.transform  = `translateX(${x}px)`;
+    }
+
+    /* Menjaga posisi dalam batas untuk loop infinite */
+    function normalizePosition() {
+      const setW = getTotalSetWidth();
+      if (setW === 0) return;
+      /* Jika terlalu jauh ke kiri, lompat ke kanan (seamless) */
+      if (currentTranslate < -(setW * 1.5)) {
+        currentTranslate += setW;
+        setTranslate(currentTranslate, false);
+      }
+      /* Jika terlalu jauh ke kanan, lompat ke kiri */
+      if (currentTranslate > setW * 0.5) {
+        currentTranslate -= setW;
+        setTranslate(currentTranslate, false);
+      }
+    }
+
+    /* Hitung index card asli yang paling dekat ke tengah viewport */
+    function getNearestIdx() {
+      const wrapRect  = wrap.getBoundingClientRect();
+      const wrapCx    = wrapRect.left + wrapRect.width / 2;
+      const allClones = track.querySelectorAll('.proker-card');
+      let nearest = 0, minDist = Infinity;
+      allClones.forEach((clone) => {
+        const r  = clone.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const d  = Math.abs(cx - wrapCx);
+        if (d < minDist) {
+          minDist  = d;
+          nearest  = parseInt(clone.dataset.realIdx) || 0;
+        }
+      });
+      return nearest;
+    }
+
+    function updateActive() {
+      const idx = getNearestIdx();
+      if (idx !== activeIdx) {
+        activeIdx = idx;
+        /* Update class carousel-active */
+        track.querySelectorAll('.proker-card').forEach(c => {
+          c.classList.toggle('carousel-active',
+            parseInt(c.dataset.realIdx) === activeIdx);
+        });
+        /* Update dots */
+        dotsEl.querySelectorAll('.carousel-dot').forEach((d, i) => {
+          d.classList.toggle('active', i === activeIdx);
+        });
+      }
+    }
+
+    /* Snap ke card dengan realIdx tertentu */
+    function snapToCard(realIdx, animate = true) {
+      const cardW = getCardWidth();
+      if (cardW === 0) return;
+      const wrapW = wrap.getBoundingClientRect().width;
+      /* Cari klon terdekat yang memiliki realIdx yang diminta */
+      const allClones = Array.from(track.querySelectorAll('.proker-card'));
+      let bestClone = allClones[0], minDist = Infinity;
+      const viewCenter = wrapW / 2;
+      allClones.forEach(clone => {
+        if (parseInt(clone.dataset.realIdx) !== realIdx) return;
+        const r  = clone.getBoundingClientRect();
+        const cx = r.left + r.width / 2 - wrap.getBoundingClientRect().left;
+        const d  = Math.abs(cx - viewCenter);
+        if (d < minDist) { minDist = d; bestClone = clone; }
+      });
+      /* Hitung offset untuk menempatkan klon ini di tengah wrap */
+      const cloneRect = bestClone.getBoundingClientRect();
+      const wrapRect  = wrap.getBoundingClientRect();
+      const cloneCx   = cloneRect.left + cloneRect.width / 2 - wrapRect.left;
+      currentTranslate += viewCenter - cloneCx;
+      setTranslate(currentTranslate, animate);
+      activeIdx = realIdx;
+      updateActive();
+    }
+
+    /* ── Auto-scroll loop ── */
+    let lastTime = null;
+    function autoScroll(ts) {
+      if (!lastTime) lastTime = ts;
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+
+      if (!isPaused && !dragActive) {
+        currentTranslate -= AUTO_SPEED * dt;
+        normalizePosition();
+        setTranslate(currentTranslate, false);
+        updateActive();
+      }
+      animFrame = requestAnimationFrame(autoScroll);
+    }
+
+    /* ── Drag / Touch ── */
+    function onPointerDown(e) {
+      /* Hanya proses touch atau click kiri */
+      if (e.button !== undefined && e.button !== 0) return;
+      dragActive   = true;
+      isDragging   = false;
+      dragStartX   = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+      dragStartTranslate = currentTranslate;
+      lastDragX    = dragStartX;
+      lastDragTime = performance.now();
+      velocity     = 0;
+      track.style.transition = 'none';
+    }
+
+    function onPointerMove(e) {
+      if (!dragActive) return;
+      const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+      const dx = clientX - dragStartX;
+
+      if (!isDragging && Math.abs(dx) > DRAG_THRESHOLD) {
+        isDragging = true;
+      }
+      if (!isDragging) return;
+
+      /* Hitung velocity untuk momentum setelah drag */
+      const now = performance.now();
+      velocity  = (clientX - lastDragX) / Math.max(now - lastDragTime, 1) * 1000;
+      lastDragX    = clientX;
+      lastDragTime = now;
+
+      currentTranslate = dragStartTranslate + dx;
+      normalizePosition();
+      setTranslate(currentTranslate, false);
+      updateActive();
+    }
+
+    function onPointerUp(e) {
+      if (!dragActive) return;
+      dragActive = false;
+
+      if (!isDragging) {
+        /* Ini adalah tap (bukan drag) → select card, pause */
+        const target = e.target.closest('.proker-card');
+        if (target) {
+          const idx = parseInt(target.dataset.realIdx);
+          snapToCard(idx);
+          setPaused(true);
+        }
+        return;
+      }
+
+      isDragging = false;
+
+      /* Momentum: lempar sedikit ke arah velocity */
+      const momentumPx = velocity * 0.12;
+      currentTranslate += momentumPx;
+      normalizePosition();
+
+      /* Snap ke card terdekat */
+      const nearest = getNearestIdx();
+      snapToCard(nearest, true);
+    }
+
+    /* ── Pause state ── */
+    function setPaused(state) {
+      isPaused = state;
+      pauseBadge.classList.toggle('visible', state);
+      if (!state) lastTime = null; /* reset timer agar tidak ada lompatan saat resume */
+    }
+
+    /* Resume saat klik di luar card */
+    document.addEventListener('click', e => {
+      if (!isPaused) return;
+      if (!e.target.closest('.proker-carousel-track')) {
+        setPaused(false);
+      }
+    });
+
+    /* ── Event listeners drag ── */
+    /* Mouse */
+    wrap.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    /* Touch */
+    wrap.addEventListener('touchstart', onPointerDown, { passive: true });
+    wrap.addEventListener('touchmove', e => {
+      if (isDragging) e.preventDefault(); /* cegah page scroll saat drag horizontal */
+      onPointerMove(e);
+    }, { passive: false });
+    wrap.addEventListener('touchend', onPointerUp);
+
+    /* ── "Lihat Detail" button di klon → ikuti href asli ── */
+    track.addEventListener('click', e => {
+      const btn = e.target.closest('.pc-detail-btn');
+      if (btn && !isDragging) {
+        /* biarkan navigasi default terjadi */
+      }
+    });
+
+    /* ── Sinkronisasi filter dari proker-controls ── */
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeFilter = btn.dataset.filter || 'all';
+        buildTrack(activeFilter);
+        setPaused(false);
+      });
+    });
+
+    /* ── Media query: aktifkan/nonaktifkan carousel ── */
+    function onMQChange(e) {
+      if (e.matches) {
+        /* Masuk mobile → bangun carousel */
+        buildTrack(activeFilter);
+        lastTime  = null;
+        cancelAnimationFrame(animFrame);
+        animFrame = requestAnimationFrame(autoScroll);
+      } else {
+        /* Keluar dari mobile → hentikan carousel */
+        cancelAnimationFrame(animFrame);
+        animFrame = null;
+      }
+    }
+    mq.addEventListener('change', onMQChange);
+
+    /* Jalankan sekarang jika sudah mobile */
+    if (mq.matches) {
+      buildTrack(activeFilter);
+      animFrame = requestAnimationFrame(autoScroll);
+    }
+  })();
+
+
   set('tlHeading', C.timeline.heading);
   const dirs = ['fade-left','fade-right','fade-left','fade-right','fade-left'];
   set('tlWrapper', C.timeline.items.map((t,i) =>
