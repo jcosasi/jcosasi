@@ -150,23 +150,21 @@ document.addEventListener('DOMContentLoaded', () => {
   set('tlLabel', C.timeline.label);
 
   /* ══════════════════════════════════════════
-     PROKER CAROUSEL — MOBILE ONLY
-     Diinject setelah proker-grid selesai dirender.
-     Logika: clone semua card ke track carousel,
-     auto-scroll infinite, drag-to-pan, pause on select.
+     PROKER CAROUSEL — MOBILE ONLY (v2, fixed)
+     - Sumber data: CONTENT.proker.items langsung (bukan query grid hidden)
+     - Carousel dibangun ulang dari HTML string, tidak bergantung pada
+       card di proker-grid yang tersembunyi di mobile
+     - Infinite auto-scroll, drag/swipe, pause-on-tap, resume on outside tap
   ══════════════════════════════════════════ */
   (function initProkerCarousel() {
-    /* Hanya aktif di mobile (≤768px). Jika desktop, skip. */
-    const mq = window.matchMedia('(max-width: 768px)');
+    const MQ = window.matchMedia('(max-width: 768px)');
 
-    /* Inject wrapper carousel ke DOM (setelah #proker controls) */
-    const prokerSection = document.getElementById('proker');
-    if (!prokerSection) return;
+    /* ── Inject DOM carousel ── */
+    const grid = document.getElementById('prokerGrid');
+    if (!grid) return;
 
-    /* Buat elemen carousel */
-    const wrap  = document.createElement('div');
+    const wrap = document.createElement('div');
     wrap.className = 'proker-carousel-wrap';
-    wrap.id = 'prokerCarouselWrap';
 
     const pauseBadge = document.createElement('div');
     pauseBadge.className = 'proker-carousel-pause-badge';
@@ -175,338 +173,312 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const track = document.createElement('div');
     track.className = 'proker-carousel-track';
-    track.id = 'prokerCarouselTrack';
     wrap.appendChild(track);
 
-    const dotsEl = document.createElement('div');
-    dotsEl.className = 'proker-carousel-dots';
-    dotsEl.id = 'prokerCarouselDots';
+    const dotsWrap = document.createElement('div');
+    dotsWrap.className = 'proker-carousel-dots';
 
-    /* Sisipkan carousel setelah .proker-controls */
-    const controls = prokerSection.querySelector('.proker-controls');
-    const grid     = document.getElementById('prokerGrid');
-    if (!grid) return;
-    grid.parentNode.insertBefore(wrap,  grid.nextSibling);
-    grid.parentNode.insertBefore(dotsEl, wrap.nextSibling);
+    /* Sisipkan tepat setelah proker-grid */
+    grid.after(wrap);
+    wrap.after(dotsWrap);
+
+    /* ── Helper: build card HTML (sama persis dengan render di proker-grid) ── */
+    function buildCardHTML(p) {
+      let extra = '';
+      if (p.chips && Array.isArray(p.chips) && p.chips.length)
+        extra = `<div class="pc-sub-programs">${p.chips.map(c=>`<span class="sub-p">${c}</span>`).join('')}</div>`;
+      else if (p.akademik)
+        extra = `<div class="akademik-list">${p.akademik.map(a=>`<div class="ak-item"><strong>${a.judul}</strong><p>${a.desc}</p></div>`).join('')}</div>`;
+      else if (p.mb)
+        extra = `<div class="mb-grid">${p.mb.map(m=>`<div class="mb-item">${m}</div>`).join('')}</div>`;
+      else if (p.org)
+        extra = `<div class="org-list">${p.org.map(o=>`<div class="org-item"><span class="org-dot"></span><strong>${o.judul}</strong> — ${o.desc}</div>`).join('')}</div>`;
+
+      return `<div class="proker-card" data-cat="${p.cat}" data-real-idx="REALIDX">
+        <div class="pc-header">
+          <span class="pc-num">${p.num}</span>
+          <span class="pc-tag ${p.tag_class}">${p.tag}</span>
+        </div>
+        <div class="pc-icon">${p.icon}</div>
+        <h3>${p.judul}</h3>
+        <p>${p.desc}</p>
+        <div class="pc-detail">${p.detail.map(d=>`<div class="pc-detail-item"><span class="pd-label">${d.label}</span><span>${d.val}</span></div>`).join('')}</div>
+        ${extra}
+        <a href="proker.html?id=${p.num}" class="pc-detail-btn">Lihat Detail <span>→</span></a>
+      </div>`;
+    }
 
     /* ── State ── */
-    let cards        = [];   // array card asli (bukan klon)
-    let activeFilter = 'all';
-    let activeIdx    = 0;    // index card yang sedang "selected"
-    let isPaused     = false;
-    let dragActive   = false;
-    let dragStartX   = 0;
-    let dragStartTranslate = 0;
-    let currentTranslate = 0;
-    let animFrame    = null;
-    let velocity     = 0;
-    let lastDragX    = 0;
-    let lastDragTime = 0;
-    /* Kecepatan auto-scroll px/detik */
-    const AUTO_SPEED = 38;
-    /* Minimum swipe px untuk dianggap drag (bukan tap) */
-    const DRAG_THRESHOLD = 8;
-    let isDragging   = false; // true setelah melebihi threshold
+    const AUTO_SPEED    = 40;   /* px/detik */
+    const DRAG_THRESH   = 6;    /* px sebelum dianggap drag */
+    const CARD_GAP      = 16;   /* px, harus sama dengan CSS gap */
 
-    /* ── Build / rebuild track ── */
+    let allItems        = [];   /* CONTENT.proker.items yang lolos filter */
+    let activeFilter    = 'all';
+    let cardW           = 0;    /* lebar 1 card + gap, dihitung setelah render */
+    let setLen          = 0;    /* jumlah card dalam 1 set */
+    let offset          = 0;    /* translateX saat ini (px, negatif = geser kiri) */
+    let paused          = false;
+    let raf             = null;
+    let lastTs          = 0;
+
+    /* drag state */
+    let pointerDown     = false;
+    let dragging        = false;
+    let startX          = 0;
+    let startOffset     = 0;
+    let lastX           = 0;
+    let lastMoveTs      = 0;
+    let velX            = 0;
+
+    /* ── Build / rebuild track dari data ── */
     function buildTrack(filter) {
-      /* Ambil card dari proker-grid (sumber kebenaran) */
-      const source = document.querySelectorAll('#prokerGrid .proker-card');
-      const filtered = [];
-      source.forEach(card => {
-        const cat = card.dataset.cat || '';
-        if (filter === 'all' || cat.includes(filter)) filtered.push(card);
-      });
-      cards = filtered;
+      cancelAnimationFrame(raf);
+      raf = null;
 
-      /* Kosongkan track & dots */
+      const items = (C.proker.items || []);
+      allItems = filter === 'all'
+        ? items
+        : items.filter(p => (p.cat || '').includes(filter));
+
+      setLen = allItems.length;
       track.innerHTML  = '';
-      dotsEl.innerHTML = '';
+      dotsWrap.innerHTML = '';
 
-      if (cards.length === 0) {
-        wrap.style.display = 'none';
-        dotsEl.style.display = 'none';
-        return;
-      }
-      wrap.style.display = '';
-      dotsEl.style.display = '';
+      if (setLen === 0) return;
 
-      /* Clone cards → track.
-         Untuk infinite loop, duplikat set card (3 kali agar selalu ada cukup item). */
-      const repeatCount = cards.length < 4 ? 4 : 2; // lebih banyak klon kalau card sedikit
-      for (let r = 0; r < repeatCount; r++) {
-        cards.forEach((card, i) => {
-          const clone = card.cloneNode(true);
-          clone.dataset.realIdx = i;
-          clone.dataset.setIdx  = r;
-          /* Hapus class animasi agar langsung visible */
-          clone.classList.remove('fade-up', 'delay-1', 'delay-2', 'hidden', 'carousel-active');
-          clone.classList.add('visible');
-          /* Hapus id duplikat pada badge notif agar tidak conflict */
-          const badge = clone.querySelector('[id^="notif-badge-"]');
-          if (badge) badge.removeAttribute('id');
-          track.appendChild(clone);
+      /* Berapa kali duplikat agar track cukup panjang untuk loop seamless.
+         Minimal harus lebih dari 1 layar penuh card. */
+      const COPIES = Math.max(3, Math.ceil(10 / setLen));
+
+      for (let c = 0; c < COPIES; c++) {
+        allItems.forEach((p, i) => {
+          const html = buildCardHTML(p).replace('REALIDX', i);
+          const tmp  = document.createElement('div');
+          tmp.innerHTML = html.trim();
+          const cardEl = tmp.firstElementChild;
+          track.appendChild(cardEl);
         });
       }
 
-      /* Dots — satu per card asli */
-      cards.forEach((_, i) => {
+      /* Dots */
+      allItems.forEach((_, i) => {
         const dot = document.createElement('span');
         dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
-        dot.dataset.idx = i;
-        dot.addEventListener('click', () => snapToCard(i));
-        dotsEl.appendChild(dot);
+        dot.addEventListener('click', () => { snapTo(i, true); setPaused(true); });
+        dotsWrap.appendChild(dot);
       });
 
-      /* Reset posisi ke set pertama */
-      const cardW = getCardWidth();
-      /* Mulai dari set pertama (index repeatCount-1 supaya bisa scroll ke kiri juga) */
-      currentTranslate = 0;
-      activeIdx = 0;
-      setTranslate(currentTranslate, false);
-      updateActive();
+      /* Ukur card width setelah render — pakai RAF agar layout sudah terjadi */
+      requestAnimationFrame(() => {
+        const firstCard = track.querySelector('.proker-card');
+        if (!firstCard) return;
+        cardW = firstCard.getBoundingClientRect().width + CARD_GAP;
+
+        /* Mulai dari set ke-1 (bukan ke-0) agar bisa scroll balik */
+        offset = -(setLen * cardW);
+        applyTransform(false);
+        updateActiveState();
+
+        /* Mulai animasi jika masih mobile */
+        if (MQ.matches) startAuto();
+      });
     }
 
-    function getCardWidth() {
-      const first = track.querySelector('.proker-card');
-      if (!first) return 0;
-      const style = window.getComputedStyle(track);
-      const gap   = parseFloat(style.gap) || 16;
-      return first.getBoundingClientRect().width + gap;
-    }
-
-    function getTotalSetWidth() {
-      return getCardWidth() * cards.length;
-    }
-
-    function setTranslate(x, withTransition) {
-      track.style.transition = withTransition
-        ? 'transform 0.38s cubic-bezier(.25,.8,.25,1)'
+    function applyTransform(animated) {
+      track.style.transition = animated
+        ? 'transform 0.35s cubic-bezier(.25,.8,.25,1)'
         : 'none';
-      track.style.transform  = `translateX(${x}px)`;
+      track.style.transform = `translateX(${offset}px)`;
     }
 
-    /* Menjaga posisi dalam batas untuk loop infinite */
-    function normalizePosition() {
-      const setW = getTotalSetWidth();
-      if (setW === 0) return;
-      /* Jika terlalu jauh ke kiri, lompat ke kanan (seamless) */
-      if (currentTranslate < -(setW * 1.5)) {
-        currentTranslate += setW;
-        setTranslate(currentTranslate, false);
-      }
-      /* Jika terlalu jauh ke kanan, lompat ke kiri */
-      if (currentTranslate > setW * 0.5) {
-        currentTranslate -= setW;
-        setTranslate(currentTranslate, false);
-      }
+    /* Batas infinite loop — lompat seamless saat melewati ujung */
+    function normalize() {
+      if (cardW === 0 || setLen === 0) return;
+      const fullSet = setLen * cardW;
+      /* Jika sudah melewati set terakhir ke kiri */
+      while (offset < -(fullSet * 2)) offset += fullSet;
+      /* Jika sudah melewati set pertama ke kanan */
+      while (offset > -fullSet * 0.5) offset -= fullSet;
     }
 
-    /* Hitung index card asli yang paling dekat ke tengah viewport */
-    function getNearestIdx() {
-      const wrapRect  = wrap.getBoundingClientRect();
-      const wrapCx    = wrapRect.left + wrapRect.width / 2;
-      const allClones = track.querySelectorAll('.proker-card');
-      let nearest = 0, minDist = Infinity;
-      allClones.forEach((clone) => {
-        const r  = clone.getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const d  = Math.abs(cx - wrapCx);
-        if (d < minDist) {
-          minDist  = d;
-          nearest  = parseInt(clone.dataset.realIdx) || 0;
-        }
+    /* Index card (0..setLen-1) yang paling dekat ke tengah wrap */
+    function centerIdx() {
+      if (cardW === 0 || setLen === 0) return 0;
+      const wrapCx   = wrap.getBoundingClientRect().width / 2;
+      const trackOff = offset; /* negatif */
+      /* Posisi tengah relatif dalam track */
+      const pos = wrapCx - trackOff;
+      const raw = Math.round((pos - cardW / 2) / cardW);
+      return ((raw % setLen) + setLen) % setLen;
+    }
+
+    function updateActiveState() {
+      const idx = centerIdx();
+      /* Update card classes */
+      Array.from(track.querySelectorAll('.proker-card')).forEach(card => {
+        const ri = parseInt(card.dataset.realIdx);
+        card.classList.toggle('carousel-active', ri === idx);
       });
-      return nearest;
+      /* Update dots */
+      Array.from(dotsWrap.querySelectorAll('.carousel-dot')).forEach((d, i) => {
+        d.classList.toggle('active', i === idx);
+      });
     }
 
-    function updateActive() {
-      const idx = getNearestIdx();
-      if (idx !== activeIdx) {
-        activeIdx = idx;
-        /* Update class carousel-active */
-        track.querySelectorAll('.proker-card').forEach(c => {
-          c.classList.toggle('carousel-active',
-            parseInt(c.dataset.realIdx) === activeIdx);
-        });
-        /* Update dots */
-        dotsEl.querySelectorAll('.carousel-dot').forEach((d, i) => {
-          d.classList.toggle('active', i === activeIdx);
-        });
-      }
-    }
-
-    /* Snap ke card dengan realIdx tertentu */
-    function snapToCard(realIdx, animate = true) {
-      const cardW = getCardWidth();
+    /* Snap translateX agar card[realIdx] tepat di tengah */
+    function snapTo(realIdx, animated) {
       if (cardW === 0) return;
-      const wrapW = wrap.getBoundingClientRect().width;
-      /* Cari klon terdekat yang memiliki realIdx yang diminta */
-      const allClones = Array.from(track.querySelectorAll('.proker-card'));
-      let bestClone = allClones[0], minDist = Infinity;
-      const viewCenter = wrapW / 2;
-      allClones.forEach(clone => {
-        if (parseInt(clone.dataset.realIdx) !== realIdx) return;
-        const r  = clone.getBoundingClientRect();
-        const cx = r.left + r.width / 2 - wrap.getBoundingClientRect().left;
-        const d  = Math.abs(cx - viewCenter);
-        if (d < minDist) { minDist = d; bestClone = clone; }
+      const wrapCx = wrap.getBoundingClientRect().width / 2;
+      /* Cari klon yang posisinya paling dekat ke pusat sekarang */
+      const allCards = Array.from(track.querySelectorAll('.proker-card'));
+      let best = null, bestDist = Infinity;
+      allCards.forEach(card => {
+        if (parseInt(card.dataset.realIdx) !== realIdx) return;
+        const rect = card.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        const cardCx = rect.left - wrapRect.left + rect.width / 2;
+        const dist = Math.abs(cardCx - wrapCx);
+        if (dist < bestDist) { bestDist = dist; best = card; }
       });
-      /* Hitung offset untuk menempatkan klon ini di tengah wrap */
-      const cloneRect = bestClone.getBoundingClientRect();
-      const wrapRect  = wrap.getBoundingClientRect();
-      const cloneCx   = cloneRect.left + cloneRect.width / 2 - wrapRect.left;
-      currentTranslate += viewCenter - cloneCx;
-      setTranslate(currentTranslate, animate);
-      activeIdx = realIdx;
-      updateActive();
+      if (!best) return;
+      const rect    = best.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      const cardCx  = rect.left - wrapRect.left + rect.width / 2;
+      offset += wrapCx - cardCx;
+      normalize();
+      applyTransform(animated);
+      updateActiveState();
     }
 
-    /* ── Auto-scroll loop ── */
-    let lastTime = null;
-    function autoScroll(ts) {
-      if (!lastTime) lastTime = ts;
-      const dt = Math.min((ts - lastTime) / 1000, 0.05);
-      lastTime = ts;
-
-      if (!isPaused && !dragActive) {
-        currentTranslate -= AUTO_SPEED * dt;
-        normalizePosition();
-        setTranslate(currentTranslate, false);
-        updateActive();
+    /* ── Auto-scroll ── */
+    function startAuto() {
+      if (raf) cancelAnimationFrame(raf);
+      lastTs = 0;
+      function frame(ts) {
+        if (!lastTs) lastTs = ts;
+        const dt = Math.min((ts - lastTs) / 1000, 0.05);
+        lastTs = ts;
+        if (!paused && !pointerDown) {
+          offset -= AUTO_SPEED * dt;
+          normalize();
+          applyTransform(false);
+          updateActiveState();
+        }
+        raf = requestAnimationFrame(frame);
       }
-      animFrame = requestAnimationFrame(autoScroll);
+      raf = requestAnimationFrame(frame);
     }
 
-    /* ── Drag / Touch ── */
-    function onPointerDown(e) {
-      /* Hanya proses touch atau click kiri */
-      if (e.button !== undefined && e.button !== 0) return;
-      dragActive   = true;
-      isDragging   = false;
-      dragStartX   = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
-      dragStartTranslate = currentTranslate;
-      lastDragX    = dragStartX;
-      lastDragTime = performance.now();
-      velocity     = 0;
+    function setPaused(val) {
+      paused = val;
+      pauseBadge.classList.toggle('visible', val);
+      if (!val) lastTs = 0;
+    }
+
+    /* ── Pointer / touch events ── */
+    function getClientX(e) {
+      return e.touches ? e.touches[0].clientX : e.clientX;
+    }
+
+    wrap.addEventListener('mousedown',  onDown);
+    wrap.addEventListener('touchstart', onDown, { passive: true });
+
+    function onDown(e) {
+      if (e.button && e.button !== 0) return;
+      pointerDown  = true;
+      dragging     = false;
+      startX       = getClientX(e);
+      startOffset  = offset;
+      lastX        = startX;
+      lastMoveTs   = performance.now();
+      velX         = 0;
       track.style.transition = 'none';
     }
 
-    function onPointerMove(e) {
-      if (!dragActive) return;
-      const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
-      const dx = clientX - dragStartX;
+    window.addEventListener('mousemove',  onMove);
+    window.addEventListener('touchmove',  onMove, { passive: false });
 
-      if (!isDragging && Math.abs(dx) > DRAG_THRESHOLD) {
-        isDragging = true;
-      }
-      if (!isDragging) return;
+    function onMove(e) {
+      if (!pointerDown) return;
+      const cx = getClientX(e);
+      const dx = cx - startX;
 
-      /* Hitung velocity untuk momentum setelah drag */
+      if (!dragging && Math.abs(dx) > DRAG_THRESH) dragging = true;
+      if (!dragging) return;
+
+      /* Cegah scroll vertikal halaman saat drag horizontal */
+      if (e.cancelable) e.preventDefault();
+
       const now = performance.now();
-      velocity  = (clientX - lastDragX) / Math.max(now - lastDragTime, 1) * 1000;
-      lastDragX    = clientX;
-      lastDragTime = now;
+      velX = (cx - lastX) / Math.max(now - lastMoveTs, 1) * 1000;
+      lastX = cx;
+      lastMoveTs = now;
 
-      currentTranslate = dragStartTranslate + dx;
-      normalizePosition();
-      setTranslate(currentTranslate, false);
-      updateActive();
+      offset = startOffset + dx;
+      normalize();
+      applyTransform(false);
+      updateActiveState();
     }
 
-    function onPointerUp(e) {
-      if (!dragActive) return;
-      dragActive = false;
+    window.addEventListener('mouseup',  onUp);
+    window.addEventListener('touchend', onUp);
 
-      if (!isDragging) {
-        /* Ini adalah tap (bukan drag) → select card, pause */
-        const target = e.target.closest('.proker-card');
-        if (target) {
-          const idx = parseInt(target.dataset.realIdx);
-          snapToCard(idx);
+    function onUp(e) {
+      if (!pointerDown) return;
+      pointerDown = false;
+
+      if (!dragging) {
+        /* Tap — select & pause */
+        const card = e.target ? e.target.closest('.proker-card') : null;
+        if (card) {
+          const ri = parseInt(card.dataset.realIdx);
+          snapTo(ri, true);
           setPaused(true);
         }
         return;
       }
 
-      isDragging = false;
+      dragging = false;
 
-      /* Momentum: lempar sedikit ke arah velocity */
-      const momentumPx = velocity * 0.12;
-      currentTranslate += momentumPx;
-      normalizePosition();
+      /* Momentum ringan */
+      offset += velX * 0.08;
+      normalize();
 
       /* Snap ke card terdekat */
-      const nearest = getNearestIdx();
-      snapToCard(nearest, true);
+      const ni = centerIdx();
+      snapTo(ni, true);
     }
 
-    /* ── Pause state ── */
-    function setPaused(state) {
-      isPaused = state;
-      pauseBadge.classList.toggle('visible', state);
-      if (!state) lastTime = null; /* reset timer agar tidak ada lompatan saat resume */
-    }
-
-    /* Resume saat klik di luar card */
+    /* Resume saat tap di luar track */
     document.addEventListener('click', e => {
-      if (!isPaused) return;
-      if (!e.target.closest('.proker-carousel-track')) {
-        setPaused(false);
-      }
+      if (!paused) return;
+      if (!e.target.closest('.proker-carousel-track')) setPaused(false);
     });
 
-    /* ── Event listeners drag ── */
-    /* Mouse */
-    wrap.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('mousemove', onPointerMove);
-    window.addEventListener('mouseup', onPointerUp);
-    /* Touch */
-    wrap.addEventListener('touchstart', onPointerDown, { passive: true });
-    wrap.addEventListener('touchmove', e => {
-      if (isDragging) e.preventDefault(); /* cegah page scroll saat drag horizontal */
-      onPointerMove(e);
-    }, { passive: false });
-    wrap.addEventListener('touchend', onPointerUp);
-
-    /* ── "Lihat Detail" button di klon → ikuti href asli ── */
-    track.addEventListener('click', e => {
-      const btn = e.target.closest('.pc-detail-btn');
-      if (btn && !isDragging) {
-        /* biarkan navigasi default terjadi */
-      }
-    });
-
-    /* ── Sinkronisasi filter dari proker-controls ── */
+    /* ── Filter sync ── */
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (!MQ.matches) return;
         activeFilter = btn.dataset.filter || 'all';
         buildTrack(activeFilter);
         setPaused(false);
       });
     });
 
-    /* ── Media query: aktifkan/nonaktifkan carousel ── */
-    function onMQChange(e) {
+    /* ── Media query change ── */
+    MQ.addEventListener('change', e => {
       if (e.matches) {
-        /* Masuk mobile → bangun carousel */
         buildTrack(activeFilter);
-        lastTime  = null;
-        cancelAnimationFrame(animFrame);
-        animFrame = requestAnimationFrame(autoScroll);
       } else {
-        /* Keluar dari mobile → hentikan carousel */
-        cancelAnimationFrame(animFrame);
-        animFrame = null;
+        cancelAnimationFrame(raf);
+        raf = null;
       }
-    }
-    mq.addEventListener('change', onMQChange);
+    });
 
-    /* Jalankan sekarang jika sudah mobile */
-    if (mq.matches) {
-      buildTrack(activeFilter);
-      animFrame = requestAnimationFrame(autoScroll);
-    }
+    /* ── Inisialisasi awal ── */
+    if (MQ.matches) buildTrack('all');
+
   })();
 
 
@@ -660,14 +632,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.fade-up,.fade-left,.fade-right').forEach(el=>obs.observe(el));
 
   /* ── PROKER FILTER + SEARCH ── */
-  let activeFilter = 'all';
+  let prokerActiveFilter = 'all';
   let searchQuery  = '';
 
   function applyProkerFilter() {
     const q = searchQuery.trim().toLowerCase();
     let anyVisible = false;
-    document.querySelectorAll('.proker-card').forEach(card => {
-      const catOk   = activeFilter === 'all' || (card.dataset.cat||'').includes(activeFilter);
+    /* Hanya filter card di proker-grid (desktop). Carousel punya logika sendiri. */
+    document.querySelectorAll('#prokerGrid .proker-card').forEach(card => {
+      const catOk   = prokerActiveFilter === 'all' || (card.dataset.cat||'').includes(prokerActiveFilter);
       const judulOk = !q || (card.dataset.judul||'').includes(q) || (card.dataset.num||'').includes(q);
       const show    = catOk && judulOk;
       card.classList.toggle('hidden', !show);
@@ -687,7 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', ()=>{
       document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      activeFilter = btn.dataset.filter;
+      prokerActiveFilter = btn.dataset.filter;
       applyProkerFilter();
     });
   });
