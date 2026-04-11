@@ -139,12 +139,20 @@ document.addEventListener('DOMContentLoaded', () => {
         <span class="pc-tag ${p.tag_class}">${p.tag}</span>
         <span class="pc-notif-badge" id="notif-badge-${p.num}" style="display:none" title="Ada jadwal kegiatan terdekat">🔔</span>
       </div>
-      <div class="pc-icon">${p.icon}</div><h3>${p.judul}</h3><p>${p.desc}</p>
-      <div class="pc-detail">${p.detail.map(d=>`<div class="pc-detail-item"><span class="pd-label">${d.label}</span><span>${d.val}</span></div>`).join('')}</div>
-      ${extra}
-      <a href="proker.html?id=${p.num}" class="pc-detail-btn">Lihat Detail <span>→</span></a>
+      <div class="pc-icon">${p.icon}</div><h3>${p.judul}</h3>
+      <div class="pc-body collapsed">
+        <p>${p.desc}</p>
+        <div class="pc-detail">${p.detail.map(d=>`<div class="pc-detail-item"><span class="pd-label">${d.label}</span><span>${d.val}</span></div>`).join('')}</div>
+        ${extra}
+      </div>
+      <div class="pc-footer">
+        <button class="pc-expand-btn" style="display:none" aria-expanded="false">Lihat selengkapnya <i class="peb-arrow">▼</i></button>
+        <a href="proker.html?id=${p.num}" class="pc-detail-btn">Lihat Detail <span>→</span></a>
+      </div>
       </div>`;
   }).join(''));
+  // Inisialisasi expand/collapse setelah grid di-render
+  requestAnimationFrame(() => requestAnimationFrame(() => initProkerExpand()));
 
   /* TIMELINE */
   set('tlLabel', C.timeline.label);
@@ -637,3 +645,334 @@ function renderPengurus(struktur, inti, bidang, source) {
   newCards.forEach(el => { el.classList.remove('visible'); obs.observe(el); });
 }
 
+/* ═══════════════════════════════════════════════════════════
+   PROKER CARD — EQUAL HEIGHT + EXPAND / COLLAPSE
+   Strategi:
+   1. Grid stretch → semua card 1 baris = tinggi card tertinggi
+   2. Card pakai flex-column → pc-body mengisi sisa ruang (flex:1)
+   3. JS membaca tinggi pc-body saat collapsed (= sisa ruang yang tersedia)
+      lalu membandingkan dengan scrollHeight konten aslinya.
+      Jika konten > ruang → tampilkan tombol "Lihat selengkapnya"
+      Jika konten ≤ ruang → tidak perlu tombol, konten langsung tampil penuh
+   4. CSS var --pc-body-max ditetapkan = tinggi pc-body collapsed agar
+      transisi max-height tetap smooth dan tidak loncat.
+═══════════════════════════════════════════════════════════ */
+function initProkerExpand() {
+  // Di mobile carousel tidak perlu equal-height logic
+  if (window.innerWidth <= 768) return;
+  const grid = document.getElementById('prokerGrid');
+  if (!grid) return;
+
+  const cards = Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
+  if (!cards.length) return;
+
+  // Reset semua card yang belum di-expand user ke kondisi collapsed awal
+  cards.forEach(card => {
+    const body   = card.querySelector('.pc-body');
+    const btn    = card.querySelector('.pc-expand-btn');
+    const footer = card.querySelector('.pc-footer');
+    if (!body || !btn) return;
+    if (!btn._jcExpanded) {
+      body.classList.remove('expanded');
+      body.classList.add('collapsed');
+      body.style.removeProperty('--pc-body-max');
+      btn.style.display = 'none';
+      btn.classList.remove('expanded');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.innerHTML = 'Lihat selengkapnya <i class="peb-arrow">\u25BC</i>';
+      btn._jcInited = false;
+      btn._jcExpanded = false;
+    }
+  });
+
+  requestAnimationFrame(() => {
+    // ── Kelompokkan card per baris ──
+    const rows = [];
+    cards.forEach(card => {
+      const top = Math.round(card.getBoundingClientRect().top);
+      let row = rows.find(r => Math.abs(r.top - top) < 4);
+      if (!row) { row = { top, cards: [] }; rows.push(row); }
+      row.cards.push(card);
+    });
+
+    rows.forEach(row => {
+      // Langkah 1: untuk setiap card dalam baris, ukur tinggi konten penuh pc-body
+      const bodyHeights = row.cards.map(card => {
+        const body = card.querySelector('.pc-body');
+        if (!body) return 0;
+        // Sementara expanded (tanpa transisi) untuk ukur scrollHeight
+        body.style.transition = 'none';
+        body.classList.replace('collapsed', 'expanded');
+        const full = body.scrollHeight;
+        body.classList.replace('expanded', 'collapsed');
+        void body.offsetHeight;
+        body.style.transition = '';
+        return full;
+      });
+
+      // Langkah 2: ukur tinggi card tertinggi di baris ini
+      //   = tinggi card yang kontennya paling banyak saat semua expanded
+      //   Kita pakai offsetHeight card saat ini (sudah di-stretch oleh grid)
+      const maxCardH = Math.max(...row.cards.map(c => c.offsetHeight));
+
+      // Langkah 3: tiap card — hitung sisa ruang untuk pc-body
+      row.cards.forEach((card, i) => {
+        const body   = card.querySelector('.pc-body');
+        const btn    = card.querySelector('.pc-expand-btn');
+        const footer = card.querySelector('.pc-footer');
+        if (!body || !btn) return;
+        if (btn._jcInited) return;
+        btn._jcInited = true;
+
+        // Tinggi fixed parts: padding card (atas+bawah) + header + icon + h3 + footer
+        const cardPadV   = 32 * 2; // padding: 32px atas + bawah
+        const headerH    = card.querySelector('.pc-header')  ? card.querySelector('.pc-header').offsetHeight  : 0;
+        const iconH      = card.querySelector('.pc-icon')    ? card.querySelector('.pc-icon').offsetHeight    : 0;
+        const h3H        = card.querySelector('h3')          ? card.querySelector('h3').offsetHeight          : 0;
+        const footerH    = footer                            ? footer.offsetHeight                            : 0;
+
+        // Ruang tersedia untuk pc-body = tinggi card tertinggi dikurangi semua bagian tetap
+        const availH = maxCardH - cardPadV - headerH - iconH - h3H - footerH - 14; // 14 = padding-top footer
+
+        // Set CSS var agar collapsed pakai nilai ini
+        body.style.setProperty('--pc-body-max', Math.max(availH, 60) + 'px');
+
+        const fullH = bodyHeights[i];
+
+        if (fullH <= availH + 4) {
+          // Konten muat dalam ruang tersedia — tidak perlu tombol
+          body.classList.replace('collapsed', 'expanded');
+          return;
+        }
+
+        // Konten overflow — tampilkan tombol
+        btn.style.display = 'inline-flex';
+
+        btn.addEventListener('click', function() {
+          const isExp = btn._jcExpanded;
+          if (isExp) {
+            body.classList.replace('expanded', 'collapsed');
+            btn.classList.remove('expanded');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.innerHTML = 'Lihat selengkapnya <i class="peb-arrow">\u25BC</i>';
+            btn._jcExpanded = false;
+          } else {
+            body.classList.replace('collapsed', 'expanded');
+            btn.classList.add('expanded');
+            btn.setAttribute('aria-expanded', 'true');
+            btn.innerHTML = 'Sembunyikan <i class="peb-arrow">\u25BC</i>';
+            btn._jcExpanded = true;
+          }
+        });
+      });
+    });
+  });
+}
+/* Re-init setelah filter atau search mengubah card yang tampil */
+(function attachProkerFilterListener() {
+  document.querySelectorAll('.filter-btn').forEach(fb => {
+    fb.addEventListener('click', () => {
+      setTimeout(() => initProkerExpand(), 80);
+    });
+  });
+  const searchInput = document.getElementById('prokerSearch');
+  const searchClear = document.getElementById('prokerSearchClear');
+  if (searchInput) searchInput.addEventListener('input', () => setTimeout(() => initProkerExpand(), 80));
+  if (searchClear) searchClear.addEventListener('click', () => setTimeout(() => initProkerExpand(), 80));
+})();
+
+
+/* ═══════════════════════════════════════════════════════════
+   PROKER CAROUSEL — MOBILE ONLY
+   - Auto-scroll antar card setiap 3 detik
+   - Pause saat user drag / hover
+   - Drag & swipe manual (mouse + touch)
+   - Dots indicator sinkron dengan posisi scroll
+═══════════════════════════════════════════════════════════ */
+function initProkerCarousel() {
+  const MOBILE_BP = 768;
+  if (window.innerWidth > MOBILE_BP) return;
+
+  const grid = document.getElementById('prokerGrid');
+  if (!grid || grid._carouselInited) return;
+  grid._carouselInited = true;
+
+  const section = document.getElementById('proker');
+
+  // ── Hint swipe ──
+  let hint = section && section.querySelector('.proker-carousel-hint');
+  if (!hint && section) {
+    hint = document.createElement('div');
+    hint.className = 'proker-carousel-hint';
+    hint.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M5 12h14M15 8l4 4-4 4"/></svg> Geser untuk melihat lebih`;
+    // Sisipkan sebelum grid
+    grid.parentNode.insertBefore(hint, grid);
+    hint.style.display = 'flex';
+    // Sembunyikan setelah user pertama kali scroll
+    grid.addEventListener('scroll', () => { hint.style.display = 'none'; }, { once: true });
+  }
+
+  // ── Dots ──
+  const cards = Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
+  let dotsWrap = section && section.querySelector('.proker-dots');
+  if (!dotsWrap && section) {
+    dotsWrap = document.createElement('div');
+    dotsWrap.className = 'proker-dots';
+    grid.parentNode.insertBefore(dotsWrap, grid.nextSibling);
+    dotsWrap.style.display = 'flex';
+  }
+
+  function rebuildDots() {
+    if (!dotsWrap) return;
+    const visible = Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
+    dotsWrap.innerHTML = '';
+    visible.forEach((_, i) => {
+      const d = document.createElement('button');
+      d.className = 'proker-dot' + (i === 0 ? ' active' : '');
+      d.setAttribute('aria-label', 'Card ' + (i + 1));
+      d.addEventListener('click', () => scrollToCard(i));
+      dotsWrap.appendChild(d);
+    });
+  }
+  rebuildDots();
+
+  function getVisibleCards() {
+    return Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
+  }
+
+  function scrollToCard(idx) {
+    const visible = getVisibleCards();
+    if (!visible[idx]) return;
+    const card = visible[idx];
+    const gridRect = grid.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    // Scroll agar card berada di tengah grid
+    const offset = cardRect.left - gridRect.left - (grid.clientWidth - card.offsetWidth) / 2;
+    grid.scrollBy({ left: offset, behavior: 'smooth' });
+  }
+
+  function getCurrentIndex() {
+    const visible = getVisibleCards();
+    if (!visible.length) return 0;
+    const center = grid.scrollLeft + grid.clientWidth / 2;
+    let closest = 0, minDist = Infinity;
+    visible.forEach((card, i) => {
+      const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+      const dist = Math.abs(cardCenter - center);
+      if (dist < minDist) { minDist = dist; closest = i; }
+    });
+    return closest;
+  }
+
+  function updateDots(idx) {
+    if (!dotsWrap) return;
+    const dots = dotsWrap.querySelectorAll('.proker-dot');
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+  }
+
+  function updateActiveCard(idx) {
+    getVisibleCards().forEach((c, i) => c.classList.toggle('carousel-active', i === idx));
+  }
+
+  // Sync dots saat scroll
+  let scrollTimer;
+  grid.addEventListener('scroll', () => {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      const idx = getCurrentIndex();
+      updateDots(idx);
+      updateActiveCard(idx);
+    }, 80);
+  }, { passive: true });
+
+  // ── Auto-scroll ──
+  let autoTimer = null;
+  let paused = false;
+
+  function startAuto() {
+    stopAuto();
+    if (paused) return;
+    autoTimer = setInterval(() => {
+      if (paused) return;
+      const visible = getVisibleCards();
+      if (!visible.length) return;
+      const cur = getCurrentIndex();
+      const next = (cur + 1) % visible.length;
+      scrollToCard(next);
+    }, 3000);
+  }
+
+  function stopAuto() {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+
+  // Pause saat hover
+  grid.addEventListener('mouseenter', () => { paused = true; stopAuto(); });
+  grid.addEventListener('mouseleave', () => { paused = false; startAuto(); });
+
+  // Pause saat touch/drag, resume setelah
+  grid.addEventListener('touchstart', () => { paused = true; stopAuto(); }, { passive: true });
+  grid.addEventListener('touchend', () => {
+    setTimeout(() => { paused = false; startAuto(); }, 2000);
+  }, { passive: true });
+
+  // ── Drag dengan mouse ──
+  let isDragging = false, startX = 0, startScroll = 0;
+
+  grid.addEventListener('mousedown', e => {
+    isDragging = true;
+    startX = e.pageX;
+    startScroll = grid.scrollLeft;
+    grid.classList.add('is-dragging');
+    paused = true; stopAuto();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.pageX - startX;
+    grid.scrollLeft = startScroll - dx;
+  });
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    grid.classList.remove('is-dragging');
+    // Snap ke card terdekat
+    const idx = getCurrentIndex();
+    scrollToCard(idx);
+    setTimeout(() => { paused = false; startAuto(); }, 2000);
+  });
+
+  // Mulai auto-scroll
+  startAuto();
+  updateDots(0);
+  updateActiveCard(0);
+
+  // Re-build dots jika filter/search berubah
+  document.querySelectorAll('.filter-btn').forEach(fb => {
+    fb.addEventListener('click', () => setTimeout(() => {
+      rebuildDots();
+      dotsWrap && (dotsWrap.style.display = 'flex');
+      scrollToCard(0);
+      startAuto();
+    }, 100));
+  });
+  const searchInput = document.getElementById('prokerSearch');
+  const searchClear = document.getElementById('prokerSearchClear');
+  if (searchInput) searchInput.addEventListener('input', () => setTimeout(() => {
+    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0);
+  }, 150));
+  if (searchClear) searchClear.addEventListener('click', () => setTimeout(() => {
+    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0);
+  }, 100));
+}
+
+// Jalankan carousel setelah proker grid siap
+document.addEventListener('DOMContentLoaded', () => {
+  requestAnimationFrame(() => requestAnimationFrame(() => initProkerCarousel()));
+});
+// Re-cek jika resize dari desktop ke mobile
+window.addEventListener('resize', () => {
+  const grid = document.getElementById('prokerGrid');
+  if (grid) grid._carouselInited = false;
+  if (window.innerWidth <= 768) initProkerCarousel();
+});

@@ -607,6 +607,8 @@ section {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 28px;
+  /* stretch = semua card dalam satu baris punya tinggi sama */
+  align-items: stretch;
 }
 .proker-card {
   background: var(--white);
@@ -615,6 +617,10 @@ section {
   padding: 32px;
   transition: all var(--trans);
   position: relative; overflow: hidden;
+  min-width: 0;
+  /* Flex column agar pc-body bisa mengisi sisa ruang */
+  display: flex;
+  flex-direction: column;
 }
 .proker-card::before {
   content: ''; position: absolute;
@@ -658,6 +664,54 @@ section {
   color: var(--purple-deep);
   margin-bottom: 12px; line-height: 1.3;
 }
+
+/* ── Collapsible body — konten di bawah h3 ── */
+.pc-body {
+  overflow: hidden;
+  transition: max-height .4s cubic-bezier(.4,0,.2,1);
+}
+/* collapsed: max-height diset JS via --pc-body-max = sisa ruang yang tersedia */
+.pc-body.collapsed {
+  max-height: var(--pc-body-max, 120px);
+  -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+}
+.pc-body.expanded {
+  max-height: 2000px;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* ── Footer card: expand-btn + detail-btn selalu di bawah ── */
+.pc-footer {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Tombol lihat selengkapnya */
+.pc-expand-btn {
+  display: none; /* diatur via JS */
+  align-items: center; gap: 5px;
+  margin-top: 0; margin-bottom: 10px;
+  background: none; border: none;
+  color: var(--purple-mid);
+  font-family: var(--font-body);
+  font-size: .82rem; font-weight: 600;
+  cursor: pointer; padding: 0;
+  transition: color var(--trans);
+}
+.pc-expand-btn:hover { color: var(--purple-deep); }
+.pc-expand-btn .peb-arrow {
+  display: inline-block;
+  transition: transform .3s ease;
+  font-style: normal;
+  font-size: .75rem;
+}
+.pc-expand-btn.expanded .peb-arrow { transform: rotate(180deg); }
+
 .proker-card p {
   font-size: .9rem; color: var(--grey-dark); line-height: 1.75;
   margin-bottom: 20px;
@@ -1423,7 +1477,7 @@ footer {
 /* ── Tombol Lihat Detail di Proker Card ── */
 .pc-detail-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  margin-top: 16px;
+  margin-top: 0;
   padding: 9px 18px; border-radius: 99px;
   font-size: .82rem; font-weight: 600;
   color: var(--purple-mid);
@@ -1611,6 +1665,11 @@ footer {
   .filter-btn { flex-shrink: 0; }
 }
 
+
+/* ── Proker carousel dots & hint — tersembunyi di desktop ── */
+.proker-dots,
+.proker-carousel-hint { display: none; }
+
 /* ══════════════════════════════════════════
    MOBILE CRITICAL FIXES
    1. Navbar tetap di atas (tidak ikut scroll / tertutup browser bar)
@@ -1682,10 +1741,84 @@ section,
     overflow-x: hidden;
   }
 
-  /* ── Proker grid: pastikan card tidak terlalu lebar ── */
+  /* ── Proker: carousel horizontal di mobile ── */
   .proker-grid {
-    grid-template-columns: 1fr;
+    /* Ubah dari grid ke flex horizontal untuk carousel */
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    /* Scroll horizontal manual */
+    overflow-x: auto;
+    overflow-y: visible;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    /* Sembunyikan scrollbar tapi tetap bisa scroll */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    /* Jangan clip isi */
     width: 100%;
+    /* Padding sisi agar card pertama/terakhir punya ruang */
+    padding: 12px 20px 20px;
+    /* Penting: jangan align-items stretch, biarkan card natural */
+    align-items: start;
+    /* Cursor drag hint */
+    cursor: grab;
+  }
+  .proker-grid::-webkit-scrollbar { display: none; }
+  .proker-grid.is-dragging { cursor: grabbing; }
+  .proker-grid.is-dragging .proker-card { pointer-events: none; }
+
+  /* Setiap card: lebar tetap, scroll-snap */
+  .proker-grid .proker-card {
+    flex: 0 0 82vw;
+    max-width: 320px;
+    min-width: 260px;
+    scroll-snap-align: center;
+    /* Reset equal-height stretch dari desktop */
+    height: auto;
+    /* Animasi masuk jangan ganggu carousel */
+    transform: none !important;
+  }
+  /* Card yang sedang aktif/tengah sedikit lebih menonjol */
+  .proker-grid .proker-card.carousel-active {
+    box-shadow: 0 8px 32px rgba(61,26,94,.18);
+    border-color: var(--purple-light);
+  }
+
+  /* Dots indicator */
+  .proker-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .proker-dot {
+    width: 7px; height: 7px;
+    border-radius: 99px;
+    background: var(--grey-light);
+    border: none; padding: 0; cursor: pointer;
+    transition: width .25s, background .25s;
+    flex-shrink: 0;
+  }
+  .proker-dot.active {
+    width: 20px;
+    background: var(--purple-mid);
+  }
+
+  /* Auto-scroll pause indicator */
+  .proker-carousel-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: .75rem;
+    color: var(--grey-mid);
+    margin-bottom: 12px;
+  }
+  .proker-carousel-hint svg {
+    width: 14px; height: 14px;
+    stroke: var(--grey-mid);
   }
 
   /* ── Highlights di hero: wrap dengan benar ── */
