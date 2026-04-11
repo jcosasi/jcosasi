@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ${extra}
       </div>
       <div class="pc-footer">
-        <button class="pc-expand-btn" style="display:none" aria-expanded="false">Lihat selengkapnya <i class="peb-arrow">▼</i></button>
+        <button class="pc-expand-btn" style="display: inline-flex" aria-expanded="false">Lihat selengkapnya <i class="peb-arrow">▼</i></button>
         <a href="proker.html?id=${p.num}" class="pc-detail-btn">Lihat Detail <span>→</span></a>
       </div>
       </div>`;
