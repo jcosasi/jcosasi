@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ${extra}
       </div>
       <div class="pc-footer">
-        <button class="pc-expand-btn" style="display: inline-flex" aria-expanded="false">Lihat selengkapnya <i class="peb-arrow">▼</i></button>
+        <button class="pc-expand-btn" style="display:none" aria-expanded="false">Lihat selengkapnya <i class="peb-arrow">▼</i></button>
         <a href="proker.html?id=${p.num}" class="pc-detail-btn">Lihat Detail <span>→</span></a>
       </div>
       </div>`;
@@ -597,52 +597,60 @@ async function loadPengurusFromSheets() {
 }
 
 /**
- * Render org chart dengan data yang sudah siap
+ * Render pengurus sebagai carousel horizontal
  * source: 'sheets' | 'fallback'
  */
 function renderPengurus(struktur, inti, bidang, source) {
-  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-  const P   = CONTENT.pengurus;
+  const P = CONTENT.pengurus;
 
-  // Update catatan — sembunyikan jika dari Sheets berhasil
+  // Update catatan
   const noteEl = document.getElementById('pengurusNote');
   if (noteEl) {
     if (source === 'sheets') {
       noteEl.style.display = 'none';
     } else {
       noteEl.style.display = '';
-      noteEl.innerHTML = `<span class="pn-icon">📋</span><p>${P.catatan}</p>`;
+      noteEl.innerHTML = '<span class="pn-icon">📋</span><p>' + P.catatan + '</p>';
     }
   }
 
-  // Render kartu — fallback jika jabatan tidak ada di data Sheets
-  const getFallback = (key) => P.struktur[key] || { jabatan: key, nama: '–', kelas: '–', photo: '', icon: '👤', desc: '' };
+  const getFallback = (key) => P.struktur[key] || { jabatan: key, nama: '-', kelas: '-', photo: '', icon: '?', desc: '' };
 
-  set('orgKetua', buildOrgCard(struktur.ketua || getFallback('ketua')));
+  const intiData   = (inti   && inti.length   > 0) ? inti   : ['wakil','sekretaris','bendahara'].map(k => struktur[k] || getFallback(k));
+  const bidangData = (bidang && bidang.length  > 0) ? bidang : P.bidang;
 
-  // Level 2 Inti — dinamis, bisa 1–5 orang
-  const intiData = (inti && inti.length > 0) ? inti
-    : ['wakil','sekretaris','bendahara'].map(k => struktur[k] || getFallback(k));
-  const intiEl = document.getElementById('orgInti');
-  if (intiEl) {
-    const delays = ['delay-1','delay-2','delay-3','delay-4','delay-5'];
-    intiEl.innerHTML = intiData.slice(0, 5).map((d, i) =>
-      `<div class="org-card org-card-inti fade-up ${delays[i] || ''}">${buildOrgCardInti(d)}</div>`
-    ).join('');
-  }
+  const ketuaCards  = '<div class="org-card org-card-ketua fade-up">' + buildOrgCard(struktur.ketua || getFallback('ketua')) + '</div>';
+  const intiCards   = intiData.slice(0, 5).map(d => '<div class="org-card org-card-inti fade-up">' + buildOrgCardInti(d) + '</div>').join('');
+  const bidangCards = bidangData.map(b => '<div class="org-card org-card-bidang fade-up">' + buildOrgCard(b) + '</div>').join('');
 
-  const bidangData = (bidang && bidang.length > 0) ? bidang : P.bidang;
-  set('orgBidang', bidangData.map((b, i) => {
-    const delays = ['', 'delay-1', 'delay-2', 'delay-3'];
-    return `<div class="org-card org-card-bidang fade-up ${delays[i] || ''}">${buildOrgCard(b)}</div>`;
-  }).join(''));
+  const trackHTML =
+    '<span class="org-carousel-group-label lv-ketua">Pimpinan</span>' +
+    ketuaCards +
+    '<span class="org-carousel-group-label lv-inti">Inti</span>' +
+    intiCards +
+    '<span class="org-carousel-group-label lv-bidang">Bidang</span>' +
+    bidangCards;
 
-  // Trigger animasi scroll setelah render
-  const newCards = document.querySelectorAll('#pengurus .fade-up');
-  const obs = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-  }, { threshold: 0.1 });
-  newCards.forEach(el => { el.classList.remove('visible'); obs.observe(el); });
+  const chartEl = document.querySelector('#pengurus .org-chart');
+  if (!chartEl) return;
+
+  chartEl.innerHTML =
+    '<div class="org-carousel-track" id="orgCarouselTrack">' + trackHTML + '</div>' +
+    '<div class="org-carousel-footer">' +
+      '<button class="org-arrow" id="orgPrev" aria-label="Sebelumnya">&#8592;</button>' +
+      '<div class="org-dots" id="orgDots"></div>' +
+      '<button class="org-arrow" id="orgNext" aria-label="Berikutnya">&#8594;</button>' +
+    '</div>';
+
+  // Fade-up intersection observer
+  requestAnimationFrame(function() {
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.15 });
+    chartEl.querySelectorAll('.fade-up').forEach(function(el) { el.classList.remove('visible'); obs.observe(el); });
+  });
+
+  requestAnimationFrame(function() { requestAnimationFrame(initPengurusCarousel); });
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -658,19 +666,17 @@ function renderPengurus(struktur, inti, bidang, source) {
       transisi max-height tetap smooth dan tidak loncat.
 ═══════════════════════════════════════════════════════════ */
 function initProkerExpand() {
-  // Di mobile carousel tidak perlu equal-height logic
-  if (window.innerWidth <= 768) return;
   const grid = document.getElementById('prokerGrid');
   if (!grid) return;
 
+  const isMobile = window.innerWidth <= 768;
   const cards = Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
   if (!cards.length) return;
 
-  // Reset semua card yang belum di-expand user ke kondisi collapsed awal
+  // Reset semua card yang belum di-expand user
   cards.forEach(card => {
-    const body   = card.querySelector('.pc-body');
-    const btn    = card.querySelector('.pc-expand-btn');
-    const footer = card.querySelector('.pc-footer');
+    const body = card.querySelector('.pc-body');
+    const btn  = card.querySelector('.pc-expand-btn');
     if (!body || !btn) return;
     if (!btn._jcExpanded) {
       body.classList.remove('expanded');
@@ -686,86 +692,128 @@ function initProkerExpand() {
   });
 
   requestAnimationFrame(() => {
-    // ── Kelompokkan card per baris ──
-    const rows = [];
-    cards.forEach(card => {
-      const top = Math.round(card.getBoundingClientRect().top);
-      let row = rows.find(r => Math.abs(r.top - top) < 4);
-      if (!row) { row = { top, cards: [] }; rows.push(row); }
-      row.cards.push(card);
-    });
+    if (isMobile) {
+      // ── PATH MOBILE: tiap card berdiri sendiri di carousel ──
+      // Pakai collapsed height tetap (120px via CSS var default),
+      // hanya tampilkan tombol jika konten lebih tinggi dari itu.
+      const MOBILE_COLLAPSED = 120;
 
-    rows.forEach(row => {
-      // Langkah 1: untuk setiap card dalam baris, ukur tinggi konten penuh pc-body
-      const bodyHeights = row.cards.map(card => {
-        const body = card.querySelector('.pc-body');
-        if (!body) return 0;
-        // Sementara expanded (tanpa transisi) untuk ukur scrollHeight
+      cards.forEach(card => {
+        const body   = card.querySelector('.pc-body');
+        const btn    = card.querySelector('.pc-expand-btn');
+        if (!body || !btn || btn._jcInited) return;
+        btn._jcInited = true;
+
+        // Ukur tinggi konten penuh
         body.style.transition = 'none';
         body.classList.replace('collapsed', 'expanded');
-        const full = body.scrollHeight;
+        const fullH = body.scrollHeight;
         body.classList.replace('expanded', 'collapsed');
         void body.offsetHeight;
         body.style.transition = '';
-        return full;
-      });
 
-      // Langkah 2: ukur tinggi card tertinggi di baris ini
-      //   = tinggi card yang kontennya paling banyak saat semua expanded
-      //   Kita pakai offsetHeight card saat ini (sudah di-stretch oleh grid)
-      const maxCardH = Math.max(...row.cards.map(c => c.offsetHeight));
+        body.style.setProperty('--pc-body-max', MOBILE_COLLAPSED + 'px');
 
-      // Langkah 3: tiap card — hitung sisa ruang untuk pc-body
-      row.cards.forEach((card, i) => {
-        const body   = card.querySelector('.pc-body');
-        const btn    = card.querySelector('.pc-expand-btn');
-        const footer = card.querySelector('.pc-footer');
-        if (!body || !btn) return;
-        if (btn._jcInited) return;
-        btn._jcInited = true;
-
-        // Tinggi fixed parts: padding card (atas+bawah) + header + icon + h3 + footer
-        const cardPadV   = 32 * 2; // padding: 32px atas + bawah
-        const headerH    = card.querySelector('.pc-header')  ? card.querySelector('.pc-header').offsetHeight  : 0;
-        const iconH      = card.querySelector('.pc-icon')    ? card.querySelector('.pc-icon').offsetHeight    : 0;
-        const h3H        = card.querySelector('h3')          ? card.querySelector('h3').offsetHeight          : 0;
-        const footerH    = footer                            ? footer.offsetHeight                            : 0;
-
-        // Ruang tersedia untuk pc-body = tinggi card tertinggi dikurangi semua bagian tetap
-        const availH = maxCardH - cardPadV - headerH - iconH - h3H - footerH - 14; // 14 = padding-top footer
-
-        // Set CSS var agar collapsed pakai nilai ini
-        body.style.setProperty('--pc-body-max', Math.max(availH, 60) + 'px');
-
-        const fullH = bodyHeights[i];
-
-        if (fullH <= availH + 4) {
-          // Konten muat dalam ruang tersedia — tidak perlu tombol
+        if (fullH <= MOBILE_COLLAPSED + 4) {
           body.classList.replace('collapsed', 'expanded');
           return;
         }
 
-        // Konten overflow — tampilkan tombol
         btn.style.display = 'inline-flex';
 
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation(); // cegah event naik ke grid (drag handler)
           const isExp = btn._jcExpanded;
+          const g = document.getElementById('prokerGrid');
           if (isExp) {
             body.classList.replace('expanded', 'collapsed');
             btn.classList.remove('expanded');
             btn.setAttribute('aria-expanded', 'false');
             btn.innerHTML = 'Lihat selengkapnya <i class="peb-arrow">\u25BC</i>';
             btn._jcExpanded = false;
+            if (g && g._carouselResume) g._carouselResume();
           } else {
             body.classList.replace('collapsed', 'expanded');
             btn.classList.add('expanded');
             btn.setAttribute('aria-expanded', 'true');
             btn.innerHTML = 'Sembunyikan <i class="peb-arrow">\u25BC</i>';
             btn._jcExpanded = true;
+            if (g && g._carouselPause) g._carouselPause();
           }
         });
+        // Cegah touchstart pada tombol memicu drag carousel
+        btn.addEventListener('touchstart', e => e.stopPropagation(), { passive: false });
+        btn.addEventListener('touchend',   e => e.stopPropagation(), { passive: false });
       });
-    });
+
+    } else {
+      // ── PATH DESKTOP: equal-height per baris ──
+      const rows = [];
+      cards.forEach(card => {
+        const top = Math.round(card.getBoundingClientRect().top);
+        let row = rows.find(r => Math.abs(r.top - top) < 4);
+        if (!row) { row = { top, cards: [] }; rows.push(row); }
+        row.cards.push(card);
+      });
+
+      rows.forEach(row => {
+        const bodyHeights = row.cards.map(card => {
+          const body = card.querySelector('.pc-body');
+          if (!body) return 0;
+          body.style.transition = 'none';
+          body.classList.replace('collapsed', 'expanded');
+          const full = body.scrollHeight;
+          body.classList.replace('expanded', 'collapsed');
+          void body.offsetHeight;
+          body.style.transition = '';
+          return full;
+        });
+
+        const maxCardH = Math.max(...row.cards.map(c => c.offsetHeight));
+
+        row.cards.forEach((card, i) => {
+          const body   = card.querySelector('.pc-body');
+          const btn    = card.querySelector('.pc-expand-btn');
+          const footer = card.querySelector('.pc-footer');
+          if (!body || !btn || btn._jcInited) return;
+          btn._jcInited = true;
+
+          const cardPadV = 32 * 2;
+          const headerH  = card.querySelector('.pc-header') ? card.querySelector('.pc-header').offsetHeight : 0;
+          const iconH    = card.querySelector('.pc-icon')   ? card.querySelector('.pc-icon').offsetHeight   : 0;
+          const h3H      = card.querySelector('h3')         ? card.querySelector('h3').offsetHeight         : 0;
+          const footerH  = footer                           ? footer.offsetHeight                           : 0;
+          const availH   = maxCardH - cardPadV - headerH - iconH - h3H - footerH - 14;
+
+          body.style.setProperty('--pc-body-max', Math.max(availH, 60) + 'px');
+
+          const fullH = bodyHeights[i];
+          if (fullH <= availH + 4) {
+            body.classList.replace('collapsed', 'expanded');
+            return;
+          }
+
+          btn.style.display = 'inline-flex';
+
+          btn.addEventListener('click', function() {
+            const isExp = btn._jcExpanded;
+            if (isExp) {
+              body.classList.replace('expanded', 'collapsed');
+              btn.classList.remove('expanded');
+              btn.setAttribute('aria-expanded', 'false');
+              btn.innerHTML = 'Lihat selengkapnya <i class="peb-arrow">\u25BC</i>';
+              btn._jcExpanded = false;
+            } else {
+              body.classList.replace('collapsed', 'expanded');
+              btn.classList.add('expanded');
+              btn.setAttribute('aria-expanded', 'true');
+              btn.innerHTML = 'Sembunyikan <i class="peb-arrow">\u25BC</i>';
+              btn._jcExpanded = true;
+            }
+          });
+        });
+      });
+    }
   });
 }
 /* Re-init setelah filter atau search mengubah card yang tampil */
@@ -886,8 +934,9 @@ function initProkerCarousel() {
   }, { passive: true });
 
   // ── Auto-scroll ──
-  let autoTimer = null;
-  let paused = false;
+  let autoTimer   = null;
+  let paused      = false;
+  let expandLocked = false; // true saat ada card yang sedang di-expand
 
   function startAuto() {
     stopAuto();
@@ -907,21 +956,69 @@ function initProkerCarousel() {
     autoTimer = null;
   }
 
-  // Pause saat hover
-  grid.addEventListener('mouseenter', () => { paused = true; stopAuto(); });
-  grid.addEventListener('mouseleave', () => { paused = false; startAuto(); });
+  // Ekspos pause/resume ke luar (dipakai oleh tombol "Lihat selengkapnya")
+  grid._carouselPause  = () => { expandLocked = true;  paused = true;  stopAuto(); };
+  grid._carouselResume = () => { expandLocked = false; paused = false; startAuto(); };
 
-  // Pause saat touch/drag, resume setelah
-  grid.addEventListener('touchstart', () => { paused = true; stopAuto(); }, { passive: true });
-  grid.addEventListener('touchend', () => {
-    setTimeout(() => { paused = false; startAuto(); }, 2000);
+  // Pause saat hover (desktop)
+  grid.addEventListener('mouseenter', () => { if (!expandLocked) { paused = true; stopAuto(); } });
+  grid.addEventListener('mouseleave', () => { if (!expandLocked) { paused = false; startAuto(); } });
+
+  // ── Touch: bedakan tap (klik tombol) vs swipe (drag carousel) ──
+  let touchStartX = 0, touchStartY = 0, touchMoved = false;
+  const TAP_THRESHOLD = 8; // px — gerak < ini = tap, bukan swipe
+
+  grid.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchMoved  = false;
   }, { passive: true });
 
+  grid.addEventListener('touchmove', e => {
+    const dx = Math.abs(e.touches[0].clientX - touchStartX);
+    const dy = Math.abs(e.touches[0].clientY - touchStartY);
+    if (dx > TAP_THRESHOLD || dy > TAP_THRESHOLD) touchMoved = true;
+  }, { passive: true });
+
+  grid.addEventListener('touchend', () => {
+    if (touchMoved && !expandLocked) {
+      // Ini swipe — resume auto setelah jeda
+      setTimeout(() => { if (!expandLocked) { paused = false; startAuto(); } }, 2000);
+    }
+    // Jika tap (touchMoved=false), biarkan click event pada tombol jalan normal
+  }, { passive: true });
+
+  // ── Klik pada card (tap tanpa swipe) → pause carousel permanen sampai klik di luar ──
+  grid.addEventListener('click', e => {
+    const card = e.target.closest('.proker-card');
+    if (!card) return;
+    // Klik tombol expand/detail sudah ditangani sendiri — skip di sini
+    if (e.target.closest('.pc-expand-btn') || e.target.closest('.pc-detail-btn')) return;
+    // Hanya pause jika ini memang tap (bukan akhir dari drag)
+    if (touchMoved) return;
+    expandLocked = true;
+    paused = true;
+    stopAuto();
+  });
+
+  // Klik di luar grid → resume carousel
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#prokerGrid') && !expandLocked) return;
+    if (!e.target.closest('#prokerGrid')) {
+      expandLocked = false;
+      paused = false;
+      startAuto();
+    }
+  });
+
   // ── Drag dengan mouse ──
-  let isDragging = false, startX = 0, startScroll = 0;
+  let isDragging = false, dragMoved = false, startX = 0, startScroll = 0;
 
   grid.addEventListener('mousedown', e => {
+    // Jangan mulai drag jika klik pada tombol expand atau detail
+    if (e.target.closest('.pc-expand-btn') || e.target.closest('.pc-detail-btn')) return;
     isDragging = true;
+    dragMoved  = false;
     startX = e.pageX;
     startScroll = grid.scrollLeft;
     grid.classList.add('is-dragging');
@@ -930,16 +1027,21 @@ function initProkerCarousel() {
   document.addEventListener('mousemove', e => {
     if (!isDragging) return;
     const dx = e.pageX - startX;
+    if (Math.abs(dx) > 4) dragMoved = true;
     grid.scrollLeft = startScroll - dx;
   });
   document.addEventListener('mouseup', () => {
     if (!isDragging) return;
     isDragging = false;
     grid.classList.remove('is-dragging');
-    // Snap ke card terdekat
-    const idx = getCurrentIndex();
-    scrollToCard(idx);
-    setTimeout(() => { paused = false; startAuto(); }, 2000);
+    if (dragMoved) {
+      const idx = getCurrentIndex();
+      scrollToCard(idx);
+      setTimeout(() => { if (!expandLocked) { paused = false; startAuto(); } }, 2000);
+    } else {
+      // Klik tanpa drag — tidak resume jika expand sedang aktif
+      if (!expandLocked) { paused = false; startAuto(); }
+    }
   });
 
   // Mulai auto-scroll
@@ -976,3 +1078,157 @@ window.addEventListener('resize', () => {
   if (grid) grid._carouselInited = false;
   if (window.innerWidth <= 768) initProkerCarousel();
 });
+
+/* ═══════════════════════════════════════════════════════════
+   PENGURUS CAROUSEL
+   Auto-scroll + drag mouse + swipe touch + dots + prev/next
+═══════════════════════════════════════════════════════════ */
+function initPengurusCarousel() {
+  const track = document.getElementById('orgCarouselTrack');
+  const dotsEl = document.getElementById('orgDots');
+  const prevBtn = document.getElementById('orgPrev');
+  const nextBtn = document.getElementById('orgNext');
+  if (!track) return;
+
+  // Ambil hanya org-card (skip group-label)
+  const cards = Array.from(track.querySelectorAll('.org-card'));
+  if (!cards.length) return;
+
+  // ── Build dots ──
+  function buildDots() {
+    if (!dotsEl) return;
+    dotsEl.innerHTML = '';
+    cards.forEach((_, i) => {
+      const d = document.createElement('button');
+      d.className = 'org-dot' + (i === 0 ? ' active' : '');
+      d.setAttribute('aria-label', 'Card ' + (i + 1));
+      d.addEventListener('click', () => { scrollToCard(i); stopAuto(); });
+      dotsEl.appendChild(d);
+    });
+  }
+  buildDots();
+
+  function updateDots(idx) {
+    if (!dotsEl) return;
+    dotsEl.querySelectorAll('.org-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+  }
+
+  function updateActive(idx) {
+    cards.forEach((c, i) => c.classList.toggle('carousel-active', i === idx));
+  }
+
+  // ── Scroll helpers ──
+  function scrollToCard(idx) {
+    const card = cards[idx];
+    if (!card) return;
+    const offset = card.offsetLeft - (track.clientWidth - card.offsetWidth) / 2;
+    track.scrollTo({ left: offset, behavior: 'smooth' });
+  }
+
+  function getCurrentIndex() {
+    const center = track.scrollLeft + track.clientWidth / 2;
+    let closest = 0, minDist = Infinity;
+    cards.forEach((card, i) => {
+      const dist = Math.abs((card.offsetLeft + card.offsetWidth / 2) - center);
+      if (dist < minDist) { minDist = dist; closest = i; }
+    });
+    return closest;
+  }
+
+  // Sync dots on scroll
+  let scrollTimer;
+  track.addEventListener('scroll', () => {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      const idx = getCurrentIndex();
+      updateDots(idx);
+      updateActive(idx);
+    }, 80);
+  }, { passive: true });
+
+  // Prev / Next buttons
+  if (prevBtn) prevBtn.addEventListener('click', () => {
+    const cur = getCurrentIndex();
+    scrollToCard(Math.max(0, cur - 1));
+    stopAuto();
+  });
+  if (nextBtn) nextBtn.addEventListener('click', () => {
+    const cur = getCurrentIndex();
+    scrollToCard(Math.min(cards.length - 1, cur + 1));
+    stopAuto();
+  });
+
+  // ── Auto-scroll ──
+  let autoTimer = null;
+  let paused = false;
+
+  function startAuto() {
+    stopAuto();
+    if (paused) return;
+    autoTimer = setInterval(() => {
+      if (paused) return;
+      const cur = getCurrentIndex();
+      const next = (cur + 1) % cards.length;
+      scrollToCard(next);
+    }, 3500);
+  }
+
+  function stopAuto() {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+
+  // Pause on hover
+  track.addEventListener('mouseenter', () => { paused = true; stopAuto(); });
+  track.addEventListener('mouseleave', () => { paused = false; startAuto(); });
+
+  // ── Touch: tap vs swipe ──
+  let touchStartX = 0, touchMoved = false;
+  const TAP_THRESHOLD = 8;
+
+  track.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchMoved = false;
+    paused = true; stopAuto();
+  }, { passive: true });
+
+  track.addEventListener('touchmove', e => {
+    if (Math.abs(e.touches[0].clientX - touchStartX) > TAP_THRESHOLD) touchMoved = true;
+  }, { passive: true });
+
+  track.addEventListener('touchend', () => {
+    setTimeout(() => { paused = false; startAuto(); }, 2500);
+  }, { passive: true });
+
+  // ── Drag mouse ──
+  let isDragging = false, dragMoved = false, startX = 0, startScroll = 0;
+
+  track.addEventListener('mousedown', e => {
+    isDragging = true; dragMoved = false;
+    startX = e.pageX; startScroll = track.scrollLeft;
+    track.classList.add('is-dragging');
+    paused = true; stopAuto();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.pageX - startX;
+    if (Math.abs(dx) > 4) dragMoved = true;
+    track.scrollLeft = startScroll - dx;
+  });
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    track.classList.remove('is-dragging');
+    if (dragMoved) {
+      scrollToCard(getCurrentIndex());
+      setTimeout(() => { paused = false; startAuto(); }, 2500);
+    } else {
+      paused = false; startAuto();
+    }
+  });
+
+  // Start
+  startAuto();
+  updateDots(0);
+  updateActive(0);
+}
