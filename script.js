@@ -1178,9 +1178,29 @@ function initPengurusCarousel() {
     autoTimer = null;
   }
 
-  // Pause on hover
-  track.addEventListener('mouseenter', () => { paused = true; stopAuto(); });
-  track.addEventListener('mouseleave', () => { paused = false; startAuto(); });
+  // Pause on hover (desktop)
+  track.addEventListener('mouseenter', () => { if (!clickLocked) { paused = true; stopAuto(); } });
+  track.addEventListener('mouseleave', () => { if (!clickLocked) { paused = false; startAuto(); } });
+
+  // Click pada card -> berhenti permanen sampai klik di luar
+  let clickLocked = false;
+
+  track.addEventListener('click', e => {
+    if (e.target.closest('.org-card') && !touchMoved) {
+      clickLocked = true;
+      paused = true;
+      stopAuto();
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!clickLocked) return;
+    if (!e.target.closest('#orgCarouselTrack') && !e.target.closest('.org-carousel-footer')) {
+      clickLocked = false;
+      paused = false;
+      startAuto();
+    }
+  });
 
   // ── Touch: tap vs swipe ──
   let touchStartX = 0, touchMoved = false;
@@ -1197,7 +1217,11 @@ function initPengurusCarousel() {
   }, { passive: true });
 
   track.addEventListener('touchend', () => {
-    setTimeout(() => { paused = false; startAuto(); }, 2500);
+    if (touchMoved) {
+      setTimeout(() => { if (!clickLocked) { paused = false; startAuto(); } }, 2500);
+    } else {
+      clickLocked = true;
+    }
   }, { passive: true });
 
   // ── Drag mouse ──
@@ -1221,9 +1245,7 @@ function initPengurusCarousel() {
     track.classList.remove('is-dragging');
     if (dragMoved) {
       scrollToCard(getCurrentIndex());
-      setTimeout(() => { paused = false; startAuto(); }, 2500);
-    } else {
-      paused = false; startAuto();
+      setTimeout(() => { if (!clickLocked) { paused = false; startAuto(); } }, 2500);
     }
   });
 
