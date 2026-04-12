@@ -1127,10 +1127,64 @@ section {
   border-color: var(--purple-deep);
 }
 
-/* v-line dan level helpers — tidak dipakai tapi jaga kompatibilitas */
-.org-v-line { display: none; }
-.org-level  { display: contents; }
-.org-level-1, .org-level-2, .org-level-3 { display: contents; }
+/* ── Desktop: org-chart tree (carousel elements disembunyikan) ── */
+@media (min-width: 769px) {
+  /* Carousel elements tidak ditampilkan di desktop */
+  .org-carousel-track,
+  .org-carousel-footer,
+  .org-carousel-group-label { display: none !important; }
+
+  /* Kembalikan org-chart tree layout */
+  .org-chart {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .org-v-line {
+    display: block;
+    width: 2px; height: 40px;
+    background: linear-gradient(to bottom, var(--purple-light), var(--grey-light));
+  }
+  .org-level {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+    position: relative;
+  }
+  .org-level-1 { justify-content: center; }
+  .org-level-2::before {
+    content: '';
+    position: absolute; top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 60%; height: 2px;
+    background: var(--grey-light);
+  }
+  .org-level-3::before {
+    content: '';
+    position: absolute; top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 80%; height: 2px;
+    background: var(--grey-light);
+  }
+  /* Kembalikan ukuran card desktop */
+  .org-card { flex: unset; scroll-snap-align: unset; }
+  .org-card-ketua  { width: 260px; }
+  .org-card-inti   { width: 200px; }
+  .org-card-bidang { width: 190px; }
+}
+
+/* ── Mobile: carousel (tree elements disembunyikan) ── */
+@media (max-width: 768px) {
+  /* Sembunyikan elemen tree org-chart di mobile */
+  .org-level-1, .org-level-2, .org-level-3,
+  .org-v-line { display: none !important; }
+
+  /* org-chart jadi container carousel */
+  .org-chart { position: relative; width: 100%; }
+}
 
 /* Base org card */
 .org-card {

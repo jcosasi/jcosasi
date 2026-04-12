@@ -516,19 +516,38 @@ function renderPengurusSkeleton() {
     <div class="skeleton-line sk-medium"></div>
     <div class="skeleton-line sk-long"></div>`;
 
+  const isMobile = window.innerWidth <= 768;
   const $=id=>document.getElementById(id);
-  $('orgKetua')      && ($('orgKetua').innerHTML      = skeletonCard);
-  const intiSkEl = document.getElementById('orgInti');
-  if (intiSkEl) {
-    intiSkEl.innerHTML = [1,2,3].map((_, i) =>
-      `<div class="org-card org-card-inti fade-up delay-${i+1}">${skeletonCard}</div>`
+
+  if (isMobile) {
+    // Mobile: skeleton di dalam carousel track
+    const chartEl = document.querySelector('#pengurus .org-chart');
+    if (!chartEl) return;
+    const skCards = [1,2,3,4].map(() =>
+      '<div class="org-card org-card-inti">' + skeletonCard + '</div>'
     ).join('');
-  }
-  const bidang = $('orgBidang');
-  if (bidang) {
-    bidang.innerHTML = ['','delay-1','delay-2','delay-3'].map(d =>
-      `<div class="org-card org-card-bidang fade-up ${d}">${skeletonCard}</div>`
-    ).join('');
+    chartEl.innerHTML =
+      '<div class="org-carousel-track" id="orgCarouselTrack">' + skCards + '</div>' +
+      '<div class="org-carousel-footer">' +
+        '<button class="org-arrow" id="orgPrev">&#8592;</button>' +
+        '<div class="org-dots" id="orgDots"></div>' +
+        '<button class="org-arrow" id="orgNext">&#8594;</button>' +
+      '</div>';
+  } else {
+    // Desktop: skeleton di org-chart tree seperti semula
+    $('orgKetua')      && ($('orgKetua').innerHTML      = skeletonCard);
+    const intiSkEl = document.getElementById('orgInti');
+    if (intiSkEl) {
+      intiSkEl.innerHTML = [1,2,3].map((_, i) =>
+        `<div class="org-card org-card-inti fade-up delay-${i+1}">${skeletonCard}</div>`
+      ).join('');
+    }
+    const bidang = $('orgBidang');
+    if (bidang) {
+      bidang.innerHTML = ['','delay-1','delay-2','delay-3'].map(d =>
+        `<div class="org-card org-card-bidang fade-up ${d}">${skeletonCard}</div>`
+      ).join('');
+    }
   }
 }
 
@@ -597,11 +616,12 @@ async function loadPengurusFromSheets() {
 }
 
 /**
- * Render pengurus sebagai carousel horizontal
+ * Render pengurus — desktop: org-chart tree, mobile: carousel
  * source: 'sheets' | 'fallback'
  */
 function renderPengurus(struktur, inti, bidang, source) {
-  const P = CONTENT.pengurus;
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const P   = CONTENT.pengurus;
 
   // Update catatan
   const noteEl = document.getElementById('pengurusNote');
@@ -610,49 +630,71 @@ function renderPengurus(struktur, inti, bidang, source) {
       noteEl.style.display = 'none';
     } else {
       noteEl.style.display = '';
-      noteEl.innerHTML = '<span class="pn-icon">📋</span><p>' + P.catatan + '</p>';
+      noteEl.innerHTML = `<span class="pn-icon">📋</span><p>${P.catatan}</p>`;
     }
   }
 
-  const getFallback = (key) => P.struktur[key] || { jabatan: key, nama: '-', kelas: '-', photo: '', icon: '?', desc: '' };
-
+  const getFallback = (key) => P.struktur[key] || { jabatan: key, nama: '–', kelas: '–', photo: '', icon: '👤', desc: '' };
   const intiData   = (inti   && inti.length   > 0) ? inti   : ['wakil','sekretaris','bendahara'].map(k => struktur[k] || getFallback(k));
   const bidangData = (bidang && bidang.length  > 0) ? bidang : P.bidang;
 
-  const ketuaCards  = '<div class="org-card org-card-ketua fade-up">' + buildOrgCard(struktur.ketua || getFallback('ketua')) + '</div>';
-  const intiCards   = intiData.slice(0, 5).map(d => '<div class="org-card org-card-inti fade-up">' + buildOrgCardInti(d) + '</div>').join('');
-  const bidangCards = bidangData.map(b => '<div class="org-card org-card-bidang fade-up">' + buildOrgCard(b) + '</div>').join('');
+  if (window.innerWidth <= 768) {
+    // ── MOBILE: carousel ──
+    const ketuaCards  = '<div class="org-card org-card-ketua fade-up">' + buildOrgCard(struktur.ketua || getFallback('ketua')) + '</div>';
+    const intiCards   = intiData.slice(0, 5).map(d => '<div class="org-card org-card-inti fade-up">' + buildOrgCardInti(d) + '</div>').join('');
+    const bidangCards = bidangData.map(b => '<div class="org-card org-card-bidang fade-up">' + buildOrgCard(b) + '</div>').join('');
 
-  const trackHTML =
-    '<span class="org-carousel-group-label lv-ketua">Pimpinan</span>' +
-    ketuaCards +
-    '<span class="org-carousel-group-label lv-inti">Inti</span>' +
-    intiCards +
-    '<span class="org-carousel-group-label lv-bidang">Bidang</span>' +
-    bidangCards;
+    const trackHTML =
+      '<span class="org-carousel-group-label lv-ketua">Pimpinan</span>' +
+      ketuaCards +
+      '<span class="org-carousel-group-label lv-inti">Inti</span>' +
+      intiCards +
+      '<span class="org-carousel-group-label lv-bidang">Bidang</span>' +
+      bidangCards;
 
-  const chartEl = document.querySelector('#pengurus .org-chart');
-  if (!chartEl) return;
+    const chartEl = document.querySelector('#pengurus .org-chart');
+    if (!chartEl) return;
 
-  chartEl.innerHTML =
-    '<div class="org-carousel-track" id="orgCarouselTrack">' + trackHTML + '</div>' +
-    '<div class="org-carousel-footer">' +
-      '<button class="org-arrow" id="orgPrev" aria-label="Sebelumnya">&#8592;</button>' +
-      '<div class="org-dots" id="orgDots"></div>' +
-      '<button class="org-arrow" id="orgNext" aria-label="Berikutnya">&#8594;</button>' +
-    '</div>';
+    chartEl.innerHTML =
+      '<div class="org-carousel-track" id="orgCarouselTrack">' + trackHTML + '</div>' +
+      '<div class="org-carousel-footer">' +
+        '<button class="org-arrow" id="orgPrev" aria-label="Sebelumnya">&#8592;</button>' +
+        '<div class="org-dots" id="orgDots"></div>' +
+        '<button class="org-arrow" id="orgNext" aria-label="Berikutnya">&#8594;</button>' +
+      '</div>';
 
-  // Fade-up intersection observer
-  requestAnimationFrame(function() {
-    var obs = new IntersectionObserver(function(entries) {
-      entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('visible'); });
-    }, { threshold: 0.15 });
-    chartEl.querySelectorAll('.fade-up').forEach(function(el) { el.classList.remove('visible'); obs.observe(el); });
-  });
+    requestAnimationFrame(function() {
+      var obs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('visible'); });
+      }, { threshold: 0.15 });
+      chartEl.querySelectorAll('.fade-up').forEach(function(el) { el.classList.remove('visible'); obs.observe(el); });
+    });
+    requestAnimationFrame(function() { requestAnimationFrame(initPengurusCarousel); });
 
-  requestAnimationFrame(function() { requestAnimationFrame(initPengurusCarousel); });
+  } else {
+    // ── DESKTOP: org-chart tree seperti semula ──
+    set('orgKetua', buildOrgCard(struktur.ketua || getFallback('ketua')));
+
+    const intiEl = document.getElementById('orgInti');
+    if (intiEl) {
+      const delays = ['delay-1','delay-2','delay-3','delay-4','delay-5'];
+      intiEl.innerHTML = intiData.slice(0, 5).map((d, i) =>
+        `<div class="org-card org-card-inti fade-up ${delays[i] || ''}">${buildOrgCardInti(d)}</div>`
+      ).join('');
+    }
+
+    set('orgBidang', bidangData.map((b, i) => {
+      const delays = ['', 'delay-1', 'delay-2', 'delay-3'];
+      return `<div class="org-card org-card-bidang fade-up ${delays[i] || ''}">${buildOrgCard(b)}</div>`;
+    }).join(''));
+
+    const newCards = document.querySelectorAll('#pengurus .fade-up');
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.1 });
+    newCards.forEach(el => { el.classList.remove('visible'); obs.observe(el); });
+  }
 }
-
 /* ═══════════════════════════════════════════════════════════
    PROKER CARD — EQUAL HEIGHT + EXPAND / COLLAPSE
    Strategi:
