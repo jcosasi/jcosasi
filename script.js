@@ -920,7 +920,7 @@ function initProkerCarousel() {
       const d = document.createElement('button');
       d.className = 'proker-dot' + (i === 0 ? ' active' : '');
       d.setAttribute('aria-label', 'Card ' + (i + 1));
-      d.addEventListener('click', () => scrollToCard(i));
+      d.addEventListener('click', () => { scrollToCard(i); stopAuto(); clickLocked = true; paused = true; });
       dotsWrap.appendChild(d);
     });
   }
@@ -978,13 +978,14 @@ function initProkerCarousel() {
   // ── Auto-scroll ──
   let autoTimer   = null;
   let paused      = false;
+  let clickLocked  = false; // true saat card dipilih — carousel berhenti permanen sampai klik di luar
   let expandLocked = false; // true saat ada card yang sedang di-expand
 
   function startAuto() {
     stopAuto();
-    if (paused) return;
+    if (paused || clickLocked || expandLocked) return;
     autoTimer = setInterval(() => {
-      if (paused) return;
+      if (paused || clickLocked || expandLocked) return;
       const visible = getVisibleCards();
       if (!visible.length) return;
       const cur = getCurrentIndex();
@@ -1003,8 +1004,8 @@ function initProkerCarousel() {
   grid._carouselResume = () => { expandLocked = false; paused = false; startAuto(); };
 
   // Pause saat hover (desktop)
-  grid.addEventListener('mouseenter', () => { if (!expandLocked) { paused = true; stopAuto(); } });
-  grid.addEventListener('mouseleave', () => { if (!expandLocked) { paused = false; startAuto(); } });
+  grid.addEventListener('mouseenter', () => { if (!clickLocked && !expandLocked) { paused = true; stopAuto(); } });
+  grid.addEventListener('mouseleave', () => { if (!clickLocked && !expandLocked) { paused = false; startAuto(); } });
 
   // ── Touch: bedakan tap (klik tombol) vs swipe (drag carousel) ──
   let touchStartX = 0, touchStartY = 0, touchMoved = false;
@@ -1023,31 +1024,33 @@ function initProkerCarousel() {
   }, { passive: true });
 
   grid.addEventListener('touchend', () => {
-    if (touchMoved && !expandLocked) {
-      // Ini swipe — resume auto setelah jeda
-      setTimeout(() => { if (!expandLocked) { paused = false; startAuto(); } }, 2000);
+    if (touchMoved) {
+      // Ini swipe — resume auto setelah jeda (hanya jika belum di-lock)
+      setTimeout(() => { if (!clickLocked && !expandLocked) { paused = false; startAuto(); } }, 2500);
+    } else {
+      // Tap — lock permanen sampai klik di luar
+      clickLocked = true;
+      paused = true;
+      stopAuto();
     }
-    // Jika tap (touchMoved=false), biarkan click event pada tombol jalan normal
   }, { passive: true });
 
   // ── Klik pada card (tap tanpa swipe) → pause carousel permanen sampai klik di luar ──
   grid.addEventListener('click', e => {
     const card = e.target.closest('.proker-card');
     if (!card) return;
-    // Klik tombol expand/detail sudah ditangani sendiri — skip di sini
-    if (e.target.closest('.pc-expand-btn') || e.target.closest('.pc-detail-btn')) return;
     // Hanya pause jika ini memang tap (bukan akhir dari drag)
     if (touchMoved) return;
-    expandLocked = true;
+    clickLocked = true;
     paused = true;
     stopAuto();
   });
 
   // Klik di luar grid → resume carousel
   document.addEventListener('click', e => {
-    if (!e.target.closest('#prokerGrid') && !expandLocked) return;
-    if (!e.target.closest('#prokerGrid')) {
-      expandLocked = false;
+    if (!clickLocked) return;
+    if (!e.target.closest('#prokerGrid') && !e.target.closest('.proker-dots')) {
+      clickLocked = false;
       paused = false;
       startAuto();
     }
@@ -1079,10 +1082,10 @@ function initProkerCarousel() {
     if (dragMoved) {
       const idx = getCurrentIndex();
       scrollToCard(idx);
-      setTimeout(() => { if (!expandLocked) { paused = false; startAuto(); } }, 2000);
+      setTimeout(() => { if (!clickLocked && !expandLocked) { paused = false; startAuto(); } }, 2500);
     } else {
-      // Klik tanpa drag — tidak resume jika expand sedang aktif
-      if (!expandLocked) { paused = false; startAuto(); }
+      // Klik tanpa drag — tidak resume jika lock aktif
+      if (!clickLocked && !expandLocked) { paused = false; startAuto(); }
     }
   });
 
@@ -1094,6 +1097,8 @@ function initProkerCarousel() {
   // Re-build dots jika filter/search berubah
   document.querySelectorAll('.filter-btn').forEach(fb => {
     fb.addEventListener('click', () => setTimeout(() => {
+      clickLocked = false;
+      paused = false;
       rebuildDots();
       dotsWrap && (dotsWrap.style.display = 'flex');
       scrollToCard(0);
@@ -1103,10 +1108,12 @@ function initProkerCarousel() {
   const searchInput = document.getElementById('prokerSearch');
   const searchClear = document.getElementById('prokerSearchClear');
   if (searchInput) searchInput.addEventListener('input', () => setTimeout(() => {
-    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0);
+    clickLocked = false; paused = false;
+    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0); startAuto();
   }, 150));
   if (searchClear) searchClear.addEventListener('click', () => setTimeout(() => {
-    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0);
+    clickLocked = false; paused = false;
+    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0); startAuto();
   }, 100));
 }
 
