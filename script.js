@@ -874,14 +874,11 @@ function initProkerExpand() {
 
 /* ═══════════════════════════════════════════════════════════
    PROKER CAROUSEL — MOBILE ONLY
-   - Auto-scroll antar card setiap 3 detik
-   - Pause saat user drag / hover
-   - Drag & swipe manual (mouse + touch)
-   - Dots indicator sinkron dengan posisi scroll
+   Auto-scroll + swipe touch + drag mouse + dots sinkron
+   Berhenti saat card di-tap/dipilih, resume saat tap di luar
 ═══════════════════════════════════════════════════════════ */
 function initProkerCarousel() {
-  const MOBILE_BP = 768;
-  if (window.innerWidth > MOBILE_BP) return;
+  if (window.innerWidth > 768) return;
 
   const grid = document.getElementById('prokerGrid');
   if (!grid || grid._carouselInited) return;
@@ -889,82 +886,96 @@ function initProkerCarousel() {
 
   const section = document.getElementById('proker');
 
-  // ── Hint swipe ──
-  let hint = section && section.querySelector('.proker-carousel-hint');
-  if (!hint && section) {
-    hint = document.createElement('div');
+  // ── Hint swipe (sekali tampil) ──
+  if (section && !section.querySelector('.proker-carousel-hint')) {
+    const hint = document.createElement('div');
     hint.className = 'proker-carousel-hint';
     hint.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M5 12h14M15 8l4 4-4 4"/></svg> Geser untuk melihat lebih`;
-    // Sisipkan sebelum grid
     grid.parentNode.insertBefore(hint, grid);
     hint.style.display = 'flex';
-    // Sembunyikan setelah user pertama kali scroll
     grid.addEventListener('scroll', () => { hint.style.display = 'none'; }, { once: true });
   }
 
   // ── Dots ──
-  const cards = Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
   let dotsWrap = section && section.querySelector('.proker-dots');
   if (!dotsWrap && section) {
     dotsWrap = document.createElement('div');
     dotsWrap.className = 'proker-dots';
     grid.parentNode.insertBefore(dotsWrap, grid.nextSibling);
-    dotsWrap.style.display = 'flex';
   }
+  if (dotsWrap) dotsWrap.style.display = 'flex';
 
-  function rebuildDots() {
-    if (!dotsWrap) return;
-    const visible = Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
-    dotsWrap.innerHTML = '';
-    visible.forEach((_, i) => {
-      const d = document.createElement('button');
-      d.className = 'proker-dot' + (i === 0 ? ' active' : '');
-      d.setAttribute('aria-label', 'Card ' + (i + 1));
-      d.addEventListener('click', () => { scrollToCard(i); stopAuto(); clickLocked = true; paused = true; });
-      dotsWrap.appendChild(d);
-    });
-  }
-  rebuildDots();
+  // ── State ──
+  let autoTimer   = null;
+  let locked      = false; // true = carousel berhenti (tap/klik card atau expand)
+  let expandLock  = false; // true = expand/collapse sedang aktif (dari tombol Lihat selengkapnya)
 
-  function getVisibleCards() {
+  // ── Helper: ambil card yang terlihat ──
+  function getCards() {
     return Array.from(grid.querySelectorAll('.proker-card:not(.hidden)'));
   }
 
+  // ── scrollToCard: gunakan scrollTo absolut (bukan scrollBy relatif) ──
   function scrollToCard(idx) {
-    const visible = getVisibleCards();
-    if (!visible[idx]) return;
-    const card = visible[idx];
-    const gridRect = grid.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
-    // Scroll agar card berada di tengah grid
-    const offset = cardRect.left - gridRect.left - (grid.clientWidth - card.offsetWidth) / 2;
-    grid.scrollBy({ left: offset, behavior: 'smooth' });
+    const cards = getCards();
+    const card  = cards[idx];
+    if (!card) return;
+    // Hitung posisi absolut card relatif terhadap scrollable area grid
+    // card.offsetLeft sudah relatif ke offsetParent-nya. Kita hitung relatif ke grid.
+    let offsetLeft = 0;
+    let el = card;
+    while (el && el !== grid) {
+      offsetLeft += el.offsetLeft;
+      el = el.offsetParent;
+    }
+    const target = offsetLeft - (grid.clientWidth - card.offsetWidth) / 2;
+    grid.scrollTo({ left: target, behavior: 'smooth' });
   }
 
+  // ── getCurrentIndex: pakai getBoundingClientRect agar akurat ──
   function getCurrentIndex() {
-    const visible = getVisibleCards();
-    if (!visible.length) return 0;
-    const center = grid.scrollLeft + grid.clientWidth / 2;
+    const cards = getCards();
+    if (!cards.length) return 0;
+    const gridRect = grid.getBoundingClientRect();
+    const gridCenter = gridRect.left + gridRect.width / 2;
     let closest = 0, minDist = Infinity;
-    visible.forEach((card, i) => {
-      const cardCenter = card.offsetLeft + card.offsetWidth / 2;
-      const dist = Math.abs(cardCenter - center);
+    cards.forEach((card, i) => {
+      const r    = card.getBoundingClientRect();
+      const dist = Math.abs((r.left + r.width / 2) - gridCenter);
       if (dist < minDist) { minDist = dist; closest = i; }
     });
     return closest;
   }
 
+  // ── Dots: rebuild + update ──
+  function rebuildDots() {
+    if (!dotsWrap) return;
+    dotsWrap.innerHTML = '';
+    getCards().forEach((_, i) => {
+      const d = document.createElement('button');
+      d.className = 'proker-dot' + (i === 0 ? ' active' : '');
+      d.setAttribute('aria-label', 'Card ' + (i + 1));
+      // Klik dot: pindah ke card & lock (berhenti seperti tap card)
+      d.addEventListener('click', () => {
+        lock();
+        scrollToCard(i);
+      });
+      dotsWrap.appendChild(d);
+    });
+  }
+  rebuildDots();
+
   function updateDots(idx) {
     if (!dotsWrap) return;
-    const dots = dotsWrap.querySelectorAll('.proker-dot');
-    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    dotsWrap.querySelectorAll('.proker-dot').forEach((d, i) =>
+      d.classList.toggle('active', i === idx));
   }
 
   function updateActiveCard(idx) {
-    getVisibleCards().forEach((c, i) => c.classList.toggle('carousel-active', i === idx));
+    getCards().forEach((c, i) => c.classList.toggle('carousel-active', i === idx));
   }
 
-  // Sync dots saat scroll
+  // Sinkronisasi dots & active card saat scroll (debounced)
   let scrollTimer;
   grid.addEventListener('scroll', () => {
     clearTimeout(scrollTimer);
@@ -975,22 +986,25 @@ function initProkerCarousel() {
     }, 80);
   }, { passive: true });
 
-  // ── Auto-scroll ──
-  let autoTimer   = null;
-  let paused      = false;
-  let clickLocked  = false; // true saat card dipilih — carousel berhenti permanen sampai klik di luar
-  let expandLocked = false; // true saat ada card yang sedang di-expand
+  // ── Lock / unlock ──
+  function lock() {
+    locked = true;
+    stopAuto();
+  }
+  function unlock() {
+    locked = false;
+    if (!expandLock) startAuto();
+  }
 
+  // ── Auto-scroll ──
   function startAuto() {
     stopAuto();
-    if (paused || clickLocked || expandLocked) return;
+    if (locked || expandLock) return;
     autoTimer = setInterval(() => {
-      if (paused || clickLocked || expandLocked) return;
-      const visible = getVisibleCards();
-      if (!visible.length) return;
-      const cur = getCurrentIndex();
-      const next = (cur + 1) % visible.length;
-      scrollToCard(next);
+      if (locked || expandLock) { stopAuto(); return; }
+      const cards = getCards();
+      if (!cards.length) return;
+      scrollToCard((getCurrentIndex() + 1) % cards.length);
     }, 3000);
   }
 
@@ -999,133 +1013,163 @@ function initProkerCarousel() {
     autoTimer = null;
   }
 
-  // Ekspos pause/resume ke luar (dipakai oleh tombol "Lihat selengkapnya")
-  grid._carouselPause  = () => { expandLocked = true;  paused = true;  stopAuto(); };
-  grid._carouselResume = () => { expandLocked = false; paused = false; startAuto(); };
+  // Ekspos ke tombol "Lihat selengkapnya"
+  grid._carouselPause  = () => { expandLock = true;  stopAuto(); };
+  grid._carouselResume = () => { expandLock = false; if (!locked) startAuto(); };
 
   // Pause saat hover (desktop)
-  grid.addEventListener('mouseenter', () => { if (!clickLocked && !expandLocked) { paused = true; stopAuto(); } });
-  grid.addEventListener('mouseleave', () => { if (!clickLocked && !expandLocked) { paused = false; startAuto(); } });
+  grid.addEventListener('mouseenter', () => { if (!locked && !expandLock) stopAuto(); });
+  grid.addEventListener('mouseleave', () => { if (!locked && !expandLock) startAuto(); });
 
-  // ── Touch: bedakan tap (klik tombol) vs swipe (drag carousel) ──
+  // ── Klik di luar grid → unlock & resume ──
+  // Gunakan flag agar tidak terakumulasi di setiap reinit
+  if (!grid._outsideClickAttached) {
+    grid._outsideClickAttached = true;
+    document.addEventListener('click', e => {
+      if (!grid._carouselLocked) return;
+      const inGrid = e.target.closest('#prokerGrid');
+      const inDots = dotsWrap && e.target.closest('.proker-dots');
+      if (!inGrid && !inDots) {
+        grid._carouselLocked = false;
+        grid._carouselUnlock && grid._carouselUnlock();
+      }
+    });
+  }
+  // Bridge lock state ke flag di element (untuk handler di atas)
+  grid._carouselUnlock = unlock;
+  Object.defineProperty(grid, '_carouselLocked', {
+    get: () => locked,
+    set: v => { locked = v; },
+    configurable: true,
+  });
+
+  // ── Touch ──
   let touchStartX = 0, touchStartY = 0, touchMoved = false;
-  const TAP_THRESHOLD = 8; // px — gerak < ini = tap, bukan swipe
+  const TAP_THRESHOLD = 10;
 
   grid.addEventListener('touchstart', e => {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     touchMoved  = false;
+    // Hentikan auto saat user mulai sentuh (selalu, agar tidak jalan saat swipe)
+    stopAuto();
   }, { passive: true });
 
   grid.addEventListener('touchmove', e => {
-    const dx = Math.abs(e.touches[0].clientX - touchStartX);
-    const dy = Math.abs(e.touches[0].clientY - touchStartY);
-    if (dx > TAP_THRESHOLD || dy > TAP_THRESHOLD) touchMoved = true;
+    if (Math.abs(e.touches[0].clientX - touchStartX) > TAP_THRESHOLD ||
+        Math.abs(e.touches[0].clientY - touchStartY) > TAP_THRESHOLD) {
+      touchMoved = true;
+    }
   }, { passive: true });
 
   grid.addEventListener('touchend', () => {
     if (touchMoved) {
-      // Ini swipe — resume auto setelah jeda (hanya jika belum di-lock)
-      setTimeout(() => { if (!clickLocked && !expandLocked) { paused = false; startAuto(); } }, 2500);
+      // Swipe selesai → snap ke card terdekat, lalu resume jika tidak locked
+      setTimeout(() => {
+        const idx = getCurrentIndex();
+        updateDots(idx);
+        updateActiveCard(idx);
+        if (!locked && !expandLock) startAuto();
+      }, 300);
     } else {
-      // Tap — lock permanen sampai klik di luar
-      clickLocked = true;
-      paused = true;
-      stopAuto();
+      // Tap → lock carousel
+      lock();
     }
   }, { passive: true });
 
-  // ── Klik pada card (tap tanpa swipe) → pause carousel permanen sampai klik di luar ──
+  // Tap pada card juga trigger lock (untuk mouse klik)
   grid.addEventListener('click', e => {
-    const card = e.target.closest('.proker-card');
-    if (!card) return;
-    // Hanya pause jika ini memang tap (bukan akhir dari drag)
-    if (touchMoved) return;
-    clickLocked = true;
-    paused = true;
-    stopAuto();
+    if (!e.target.closest('.proker-card')) return;
+    if (touchMoved) return; // ini akhir swipe, bukan tap
+    lock();
   });
 
-  // Klik di luar grid → resume carousel
-  document.addEventListener('click', e => {
-    if (!clickLocked) return;
-    if (!e.target.closest('#prokerGrid') && !e.target.closest('.proker-dots')) {
-      clickLocked = false;
-      paused = false;
-      startAuto();
-    }
-  });
-
-  // ── Drag dengan mouse ──
+  // ── Drag mouse ──
   let isDragging = false, dragMoved = false, startX = 0, startScroll = 0;
 
   grid.addEventListener('mousedown', e => {
-    // Jangan mulai drag jika klik pada tombol expand atau detail
     if (e.target.closest('.pc-expand-btn') || e.target.closest('.pc-detail-btn')) return;
-    isDragging = true;
-    dragMoved  = false;
-    startX = e.pageX;
+    isDragging  = true;
+    dragMoved   = false;
+    startX      = e.pageX;
     startScroll = grid.scrollLeft;
     grid.classList.add('is-dragging');
-    paused = true; stopAuto();
+    stopAuto();
   });
+
   document.addEventListener('mousemove', e => {
     if (!isDragging) return;
     const dx = e.pageX - startX;
-    if (Math.abs(dx) > 4) dragMoved = true;
+    if (Math.abs(dx) > 5) dragMoved = true;
     grid.scrollLeft = startScroll - dx;
   });
+
   document.addEventListener('mouseup', () => {
     if (!isDragging) return;
     isDragging = false;
     grid.classList.remove('is-dragging');
     if (dragMoved) {
-      const idx = getCurrentIndex();
-      scrollToCard(idx);
-      setTimeout(() => { if (!clickLocked && !expandLocked) { paused = false; startAuto(); } }, 2500);
+      // Snap ke card terdekat setelah drag
+      setTimeout(() => {
+        scrollToCard(getCurrentIndex());
+        if (!locked && !expandLock) startAuto();
+      }, 50);
     } else {
-      // Klik tanpa drag — tidak resume jika lock aktif
-      if (!clickLocked && !expandLocked) { paused = false; startAuto(); }
+      if (!locked && !expandLock) startAuto();
     }
   });
 
-  // Mulai auto-scroll
+  // ── Mulai ──
   startAuto();
   updateDots(0);
   updateActiveCard(0);
 
-  // Re-build dots jika filter/search berubah
-  document.querySelectorAll('.filter-btn').forEach(fb => {
-    fb.addEventListener('click', () => setTimeout(() => {
-      clickLocked = false;
-      paused = false;
-      rebuildDots();
-      dotsWrap && (dotsWrap.style.display = 'flex');
-      scrollToCard(0);
+  // ── Rebuild dots saat filter/search berubah ──
+  // (Listener sudah terpasang di DOMContentLoaded, pakai event custom agar tidak duplikat)
+  grid._carouselReset = () => {
+    locked     = false;
+    expandLock = false;
+    rebuildDots();
+    if (dotsWrap) dotsWrap.style.display = 'flex';
+    // Scroll ke card pertama dulu, lalu mulai auto
+    grid.scrollTo({ left: 0, behavior: 'smooth' });
+    setTimeout(() => {
+      updateDots(0);
+      updateActiveCard(0);
       startAuto();
-    }, 100));
-  });
-  const searchInput = document.getElementById('prokerSearch');
-  const searchClear = document.getElementById('prokerSearchClear');
-  if (searchInput) searchInput.addEventListener('input', () => setTimeout(() => {
-    clickLocked = false; paused = false;
-    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0); startAuto();
-  }, 150));
-  if (searchClear) searchClear.addEventListener('click', () => setTimeout(() => {
-    clickLocked = false; paused = false;
-    rebuildDots(); dotsWrap && (dotsWrap.style.display = 'flex'); scrollToCard(0); startAuto();
-  }, 100));
+    }, 350);
+  };
 }
+
+// ── Pasang listener filter/search untuk reset carousel ──
+// Dipasang sekali, memanggil _carouselReset yang ada di grid
+(function attachCarouselResetListeners() {
+  function resetCarousel() {
+    const grid = document.getElementById('prokerGrid');
+    if (grid && grid._carouselReset) grid._carouselReset();
+  }
+  document.querySelectorAll('.filter-btn').forEach(fb => {
+    fb.addEventListener('click', () => setTimeout(resetCarousel, 120));
+  });
+  const si = document.getElementById('prokerSearch');
+  const sc = document.getElementById('prokerSearchClear');
+  if (si) si.addEventListener('input',  () => setTimeout(resetCarousel, 180));
+  if (sc) sc.addEventListener('click',  () => setTimeout(resetCarousel, 120));
+})();
 
 // Jalankan carousel setelah proker grid siap
 document.addEventListener('DOMContentLoaded', () => {
   requestAnimationFrame(() => requestAnimationFrame(() => initProkerCarousel()));
 });
-// Re-cek jika resize dari desktop ke mobile
+// Re-inisialisasi jika resize dari desktop ke mobile
 window.addEventListener('resize', () => {
   const grid = document.getElementById('prokerGrid');
-  if (grid) grid._carouselInited = false;
-  if (window.innerWidth <= 768) initProkerCarousel();
+  if (!grid) return;
+  if (window.innerWidth <= 768 && !grid._carouselInited) {
+    initProkerCarousel();
+  } else if (window.innerWidth > 768) {
+    grid._carouselInited = false;
+  }
 });
 
 /* ═══════════════════════════════════════════════════════════
